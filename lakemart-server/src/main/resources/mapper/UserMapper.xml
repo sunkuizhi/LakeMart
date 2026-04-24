@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.lzx.lakemart.mapper.UserMapper">
+    <update id="addPoints">
+        UPDATE tb_user SET points = points + #{points} WHERE id = #{userId}
+    </update>
+    <select id="selectPointsByUserId" resultType="java.lang.Integer">
+        SELECT points FROM tb_user WHERE id = #{userId}
+    </select>
+
+    <update id="updatePoints">
+        UPDATE tb_user SET points = #{points} WHERE id = #{userId}
+    </update>
+
+</mapper>

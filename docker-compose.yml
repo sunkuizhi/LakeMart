@@ -1,0 +1,153 @@
+#version: '3.8'
+#
+#services:
+#  mysql:
+#    image: mysql:8
+#    container_name: lakemart-mysql
+#    restart: always
+#    ports:
+#      - "3307:3306"   # 使用 3307 避免与本地 MySQL 冲突
+##      - "3306:3306"   # 使用 3307 避免与本地 MySQL 冲突
+#    environment:
+##      MYSQL_ROOT_PASSWORD: root
+#      MYSQL_ROOT_PASSWORD: sunkuizhi0128
+#      MYSQL_DATABASE: lakemart
+#    volumes:
+#      - ./mysql-data:/var/lib/mysql
+#    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+#
+#  redis:
+#    image: redis:7-alpine
+#    container_name: lakemart-redis
+#    restart: always
+#    ports:
+#      - "6379:6379"
+#    volumes:
+#      - ./redis-data:/data
+#
+#  minio:
+#    image: minio/minio
+#    container_name: lakemart-minio
+#    restart: always
+#    ports:
+#      - "9000:9000"
+#      - "9001:9001"
+#    environment:
+#      MINIO_ROOT_USER: minioadmin
+#      MINIO_ROOT_PASSWORD: minioadmin
+#    volumes:
+#      - ./minio-data:/data
+#    command: server /data --console-address ":9001"
+
+#  # 新增前端开发服务
+##  vue-dev:
+##    build:
+##      context: ./lakemart-client         # 指向你的前端项目目录
+##      dockerfile: Dockerfile.dev        # 使用开发专用 Dockerfile
+##    container_name: lakemart-vue-dev
+##    ports:
+##      - "5173:5173"                     # Vite 默认端口，可根据需要修改
+##    volumes:
+##      - ./newbee-mall-vue3-app:/app     # 挂载源码，实现热更新
+##      - /app/node_modules               # 避免覆盖容器内的 node_modules
+##    environment:
+##      - NODE_ENV=development
+##    depends_on:
+##      - mysql
+##      - redis
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8
+    container_name: lakemart-mysql
+    restart: always
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: lakemart
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    networks:
+      - lakemart-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: lakemart-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis-data:/data
+    networks:
+      - lakemart-net
+
+  minio:
+    image: minio/minio
+    container_name: lakemart-minio
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - ./minio-data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - lakemart-net
+
+  backend:
+    image: lakemart-server:latest
+    container_name: lakemart-backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      # 关键：添加 allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/lakemart?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESSKEY: minioadmin
+      MINIO_SECRETKEY: minioadmin
+      MINIO_BUCKETNAME: lakemart
+      JWT_SECRET: your-256-bit-secret-key-for-jwt-lakemart-project-2026
+      JWT_EXPIRATION: 86400000
+    depends_on:
+      - mysql
+      - redis
+      - minio
+    networks:
+      - lakemart-net
+
+  admin-frontend:
+    image: lakemart-admin:latest
+    container_name: lakemart-admin
+    restart: always
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - lakemart-net
+
+  client-frontend:
+    image: lakemart-client:latest
+    container_name: lakemart-client
+    restart: always
+    ports:
+      - "5174:80"
+    depends_on:
+      - backend
+    networks:
+      - lakemart-net
+
+networks:
+  lakemart-net:
+    driver: bridge

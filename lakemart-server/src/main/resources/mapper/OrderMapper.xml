@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.lzx.lakemart.mapper.OrderMapper">
+    <select id="getDailyStatistics" resultType="org.lzx.lakemart.model.dto.OrderStatisticsDTO">
+        SELECT DATE(o.create_time) as date,
+               COUNT(DISTINCT o.id) as orderCount,
+               SUM(o.total_amount) as totalAmount,
+               COALESCE(SUM(oi.quantity), 0) as totalItems
+        FROM tb_order o
+                 LEFT JOIN tb_order_item oi ON o.id = oi.order_id
+        WHERE o.status IN (1,2,3)
+          AND o.create_time >= #{startDate}
+      <![CDATA[
+          AND o.create_time < DATE_ADD(#{endDate}, INTERVAL 1 DAY)
+      ]]>
+    GROUP BY DATE(o.create_time)
+        ORDER BY date ASC
+    </select>
+    <!-- 热销商品排行 -->
+    <select id="getHotProducts" resultType="org.lzx.lakemart.model.vo.ProductSalesVO">
+        SELECT
+            oi.product_id as productId,
+            oi.product_name as productName,
+            SUM(oi.quantity) as totalQuantity,
+            SUM(oi.price * oi.quantity) as totalAmount
+        FROM tb_order_item oi
+                 JOIN tb_order o ON oi.order_id = o.id
+        WHERE o.status IN (1,2,3)
+        GROUP BY oi.product_id, oi.product_name
+        ORDER BY totalQuantity DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 近7日销售额趋势 -->
+    <select id="getDailySalesAmount" resultType="org.lzx.lakemart.model.vo.DailyAmountVO">
+        SELECT
+            DATE(create_time) as date,
+            SUM(total_amount) as totalAmount
+        FROM tb_order
+        WHERE status IN (1,2,3)
+          AND create_time >= #{startDate}
+        <![CDATA[
+          AND create_time < DATE_ADD(#{endDate}, INTERVAL 1 DAY)
+        ]]>
+    GROUP BY DATE(create_time)
+        ORDER BY date ASC
+    </select>
+</mapper>
