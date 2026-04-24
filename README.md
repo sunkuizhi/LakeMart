@@ -63,7 +63,8 @@
 git clone https://github.com/sunkuizhi/LakeMart.git
 cd LakeMart
 docker-compose up -d
-等待所有服务启动（约 30 秒），然后访问：
+
+### 等待所有服务启动（约 30 秒），然后访问：
 
 服务	地址	备注
 用户端	http://localhost:5174	
