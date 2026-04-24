@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin/category")
@@ -50,8 +51,13 @@ public class AdminCategoryController {
     }
 
     @DeleteMapping("/delete/{id}")
-    public Result<String> deleteCategory(@PathVariable Long id) {
+    public Result<String> deleteCategory(@PathVariable("id") Long id) {
         categoryService.deleteCategory(id);
         return Result.success("删除成功");
+    }
+    @PutMapping("/status/{id}")
+    public Result<String> updateStatus(@PathVariable("id") Long id, @RequestParam Integer status) {
+        categoryService.updateStatus(id, status);
+        return Result.success("操作成功");
     }
 }

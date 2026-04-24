@@ -2,6 +2,7 @@ package org.lzx.lakemart.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import org.lzx.lakemart.exception.BusinessException;
 import org.lzx.lakemart.mapper.CategoryMapper;
 import org.lzx.lakemart.mapper.ProductMapper;
 import org.lzx.lakemart.model.entity.Category;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -82,17 +84,22 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
     @Override
     @Transactional
     public void deleteCategory(Long id) {
-        // 检查是否有子分类
-        long childCount = count(new LambdaQueryWrapper<Category>().eq(Category::getParentId, id));
-        if (childCount > 0) {
-            throw new RuntimeException("请先删除子分类");
-        }
-        // 检查是否有商品关联
+        // 递归删除所有子分类
+        deleteChildren(id);
+        // 删除当前分类（如果有商品关联，仍需检查）
         long productCount = productMapper.selectCount(new LambdaQueryWrapper<Product>().eq(Product::getCategoryId, id));
         if (productCount > 0) {
-            throw new RuntimeException("该分类下存在商品，无法删除");
+            throw new BusinessException("该分类下存在商品，无法删除");
         }
         baseMapper.deleteById(id);
+    }
+
+    private void deleteChildren(Long parentId) {
+        List<Category> children = this.lambdaQuery().eq(Category::getParentId, parentId).list();
+        for (Category child : children) {
+            deleteChildren(child.getId()); // 递归删除子节点
+            baseMapper.deleteById(child.getId());
+        }
     }
 
     // 辅助方法：构建树
@@ -113,5 +120,61 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
                 .sorted(Comparator.comparing(CategoryVO::getSortOrder))
                 .collect(Collectors.toList());
     }
+    @Override
+    @Transactional
+    public void updateStatus(Long id, Integer status) {
+        // 1. 更新当前分类状态
+        Category category = this.getById(id);
+        if (category == null) {
+            throw new BusinessException("分类不存在");
+        }
+        category.setStatus(status);
+        this.updateById(category);
 
+        // 2. 递归更新所有子分类状态
+        updateChildrenStatus(id, status);
+    }
+
+    /**
+     * 递归更新子分类状态
+     * @param parentId 父分类ID
+     * @param status   目标状态（1启用 0禁用）
+     */
+    private void updateChildrenStatus(Long parentId, Integer status) {
+        // 查询所有直接子分类
+        List<Category> children = this.lambdaQuery()
+                .eq(Category::getParentId, parentId)
+                .list();
+        if (children.isEmpty()) {
+            return;
+        }
+        // 批量更新子分类状态
+        for (Category child : children) {
+            child.setStatus(status);
+            this.updateById(child);
+            // 递归处理孙子分类
+            updateChildrenStatus(child.getId(), status);
+        }
+    }
+    private void updateChildrenStatusBatch(Long parentId, Integer status) {
+        // 收集所有子孙分类ID
+        List<Long> ids = new ArrayList<>();
+        collectChildrenIds(parentId, ids);
+        if (!ids.isEmpty()) {
+            this.lambdaUpdate()
+                    .in(Category::getId, ids)
+                    .set(Category::getStatus, status)
+                    .update();
+        }
+    }
+
+    private void collectChildrenIds(Long parentId, List<Long> ids) {
+        List<Category> children = this.lambdaQuery()
+                .eq(Category::getParentId, parentId)
+                .list();
+        for (Category child : children) {
+            ids.add(child.getId());
+            collectChildrenIds(child.getId(), ids);
+        }
+    }
 }

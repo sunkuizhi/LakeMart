@@ -49,7 +49,7 @@ public class OrderController {
      */
     @GetMapping("/detail/{orderId}")
     public Result<OrderVO> getOrderDetail(@AuthenticationPrincipal Long userId,
-                                          @PathVariable Long orderId) {
+                                          @PathVariable("orderId") Long orderId) {
         OrderVO order = orderService.getOrderDetail(orderId, userId);
         return Result.success(order);
     }

@@ -24,7 +24,8 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
-
+import lombok.extern.slf4j.Slf4j;
+@Slf4j
 @Service
 public class BannerServiceImpl extends ServiceImpl<BannerMapper, Banner> implements BannerService {
 
@@ -71,7 +72,21 @@ public class BannerServiceImpl extends ServiceImpl<BannerMapper, Banner> impleme
     @Override
     @Transactional
     public void deleteBanner(Long id) {
-        baseMapper.deleteById(id);
+        try {
+            // 先检查是否存在
+            Banner banner = baseMapper.selectById(id);
+            if (banner == null) {
+                throw new RuntimeException("轮播图不存在，id=" + id);
+            }
+            int rows = baseMapper.deleteById(id);
+            if (rows == 0) {
+                throw new RuntimeException("删除失败，影响行数为0");
+            }
+            log.info("成功删除轮播图 id={}", id);
+        } catch (Exception e) {
+            log.error("删除轮播图失败 id={}, error={}", id, e.getMessage(), e);
+            throw new RuntimeException("删除轮播图失败：" + e.getMessage());
+        }
     }
 
     @Override

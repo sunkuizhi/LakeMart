@@ -57,7 +57,7 @@ public class AddressController {
 
     @DeleteMapping("/delete/{id}")
     public Result<String> deleteAddress(@AuthenticationPrincipal Long userId,
-                                        @PathVariable Long id) {
+                                        @PathVariable("id") Long id) {
         // 注意参数顺序：userId, addressId
         addressService.deleteAddress(userId, id);
         return Result.success("地址删除成功");
@@ -77,7 +77,7 @@ public class AddressController {
 
     @PutMapping("/default/{id}")
     public Result<String> setDefaultAddress(@AuthenticationPrincipal Long userId,
-                                            @PathVariable Long id) {
+                                            @PathVariable("id") Long id) {
         addressService.setDefaultAddress(userId, id);
         return Result.success("设置默认地址成功");
     }

@@ -40,13 +40,13 @@ public class AdminBannerController {
     }
 
     @DeleteMapping("/delete/{id}")
-    public Result<String> delete(@PathVariable Long id) {
+    public Result<String> delete(@PathVariable("id") Long id) {
         bannerService.deleteBanner(id);
         return Result.success("删除成功");
     }
 
     @PutMapping("/status/{id}")
-    public Result<String> updateStatus(@PathVariable Long id, @RequestParam(name = "status") Integer status) {
+    public Result<String> updateStatus(@PathVariable("id") Long id, @RequestParam(name = "status") Integer status) {
         bannerService.updateStatus(id, status);
         return Result.success("状态更新成功");
     }

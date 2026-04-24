@@ -25,4 +25,6 @@ public interface CategoryService extends IService<Category> {
     void updateCategory(Category category);
     // 删除分类（检查是否有子分类或关联商品）
     void deleteCategory(Long id);
+    //禁用分类
+    void updateStatus(Long id, Integer status);
 }

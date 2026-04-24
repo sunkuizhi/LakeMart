@@ -51,7 +51,7 @@ public class CartController {
      * 删除购物车中的某个商品
      */
     @DeleteMapping("/remove/{cartItemId}")
-    public Result<String> removeCartItem(@PathVariable Long cartItemId) {
+    public Result<String> removeCartItem(@PathVariable("cartItemId") Long cartItemId) {
         cartItemService.removeCartItem(cartItemId);
         return Result.success("删除成功");
     }
