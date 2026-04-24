@@ -95,3 +95,10 @@ temp/
 *.bak
 *.orig
 *.sql
+
+# 前端本地环境变量（具体文件）
+**/.env.development
+**/.env.production
+
+# 个人笔记
+常用命令.md
