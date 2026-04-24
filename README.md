@@ -69,6 +69,7 @@ docker-compose up -d
 用户端	http://localhost:5174	
 管理端	http://localhost:5173	
 MinIO 控制台	http://localhost:9001	账号/密码: minioadmin / minioadmin
+
 默认账号
 管理端：请先通过用户端注册一个账号，然后在数据库中执行 UPDATE tb_user SET role = 'ROLE_ADMIN' WHERE email = '你的邮箱'; 获得管理员权限。
 
