@@ -59,6 +59,11 @@
 - Docker Compose 2.0+
 
 ### 一键启动
+
+```bash
+git clone https://github.com/sunkuizhi/LakeMart.git
+cd LakeMart
+docker-compose up -d
 ```bash
 git clone https://github.com/sunkuizhi/LakeMart.git
 cd LakeMart
