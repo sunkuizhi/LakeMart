@@ -1,9 +1,12 @@
 package org.lzx.lakemart.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.lzx.lakemart.kafka.UserActionProducer;
 import org.lzx.lakemart.model.dto.LoginRequest;
 import org.lzx.lakemart.model.dto.PasswordChangeRequest;
 import org.lzx.lakemart.model.dto.RegisterRequest;
+import org.lzx.lakemart.model.dto.UserActionLogDTO;
 import org.lzx.lakemart.model.entity.User;
 import org.lzx.lakemart.model.vo.PointsLogVO;
 import org.lzx.lakemart.model.vo.UserVO;
@@ -48,7 +51,11 @@ public class UserController {
 
     @Autowired
     private MinioUtil minioUtil;
+    @Autowired
+    private UserActionProducer userActionProducer;
 
+    @Autowired
+    private HttpServletRequest request;
     @GetMapping("/test")
     public String test() {
         return "Hello, LakeMart!";
@@ -148,5 +155,18 @@ public class UserController {
                                         @RequestParam String newPassword) {
         userService.resetPassword(email, code, newPassword);
         return Result.success("密码重置成功");
+    }
+    @PostMapping("/action")
+    public Result<String> collectAction(@AuthenticationPrincipal Long userId,
+                                        @RequestBody UserActionLogDTO action) {
+        // 填充后端才能获取的信息
+        action.setUserId(userId);
+        action.setTimestamp(System.currentTimeMillis());
+        action.setIp(request.getRemoteAddr());
+        action.setUserAgent(request.getHeader("User-Agent"));
+
+        // 发送到 Kafka
+        userActionProducer.sendAction(action);
+        return Result.success("ok");
     }
 }

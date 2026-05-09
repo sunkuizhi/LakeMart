@@ -1,60 +1,3 @@
-#version: '3.8'
-#
-#services:
-#  mysql:
-#    image: mysql:8
-#    container_name: lakemart-mysql
-#    restart: always
-#    ports:
-#      - "3307:3306"   # 使用 3307 避免与本地 MySQL 冲突
-##      - "3306:3306"   # 使用 3307 避免与本地 MySQL 冲突
-#    environment:
-##      MYSQL_ROOT_PASSWORD: root
-#      MYSQL_ROOT_PASSWORD: sunkuizhi0128
-#      MYSQL_DATABASE: lakemart
-#    volumes:
-#      - ./mysql-data:/var/lib/mysql
-#    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-#
-#  redis:
-#    image: redis:7-alpine
-#    container_name: lakemart-redis
-#    restart: always
-#    ports:
-#      - "6379:6379"
-#    volumes:
-#      - ./redis-data:/data
-#
-#  minio:
-#    image: minio/minio
-#    container_name: lakemart-minio
-#    restart: always
-#    ports:
-#      - "9000:9000"
-#      - "9001:9001"
-#    environment:
-#      MINIO_ROOT_USER: minioadmin
-#      MINIO_ROOT_PASSWORD: minioadmin
-#    volumes:
-#      - ./minio-data:/data
-#    command: server /data --console-address ":9001"
-
-#  # 新增前端开发服务
-##  vue-dev:
-##    build:
-##      context: ./lakemart-client         # 指向你的前端项目目录
-##      dockerfile: Dockerfile.dev        # 使用开发专用 Dockerfile
-##    container_name: lakemart-vue-dev
-##    ports:
-##      - "5173:5173"                     # Vite 默认端口，可根据需要修改
-##    volumes:
-##      - ./newbee-mall-vue3-app:/app     # 挂载源码，实现热更新
-##      - /app/node_modules               # 避免覆盖容器内的 node_modules
-##    environment:
-##      - NODE_ENV=development
-##    depends_on:
-##      - mysql
-##      - redis
 version: '3.8'
 
 services:
@@ -83,7 +26,45 @@ services:
       - ./redis-data:/data
     networks:
       - lakemart-net
+#  大数据
+  zookeeper:
+    image: zookeeper:3.7
+    container_name: lakemart-zookeeper
+    ports:
+      - "2181:2181"
+    networks:
+      - lakemart-net
 
+  kafka:
+    image: wurstmeister/kafka:latest
+    container_name: lakemart-kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: kafka
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CREATE_TOPICS: "user-actions:1:1"
+    ports:
+      - "9092:9092"
+    networks:
+      - lakemart-net
+  spark:
+    image: apache/spark:3.4.1-scala2.12-java17-python3-ubuntu
+    container_name: lakemart-spark
+    depends_on:
+      - kafka
+      - redis
+    volumes:
+      - ./lakemart-spark/target/lakemart-spark.jar:/app/lakemart-spark.jar
+      - ./data/spark-checkpoints:/tmp/spark/checkpoints
+    command: >
+      /opt/spark/bin/spark-submit
+      --class com.lakemart.spark.HotItemsStreaming
+      --master local[*]
+      /app/lakemart-spark.jar
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - REDIS_HOST=redis
   minio:
     image: minio/minio
     container_name: lakemart-minio
@@ -151,3 +132,4 @@ services:
 networks:
   lakemart-net:
     driver: bridge
+

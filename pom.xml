@@ -16,20 +16,49 @@
         <maven.compiler.target>21</maven.compiler.target>
         <!-- 开启编译参数名称保留，解决 @RequestParam 和 @PathVariable 参数名解析问题 -->
         <maven.compiler.parameters>true</maven.compiler.parameters>
+        <!-- Spark & Kafka 集成相关版本 -->
+        <spark.version>3.4.1</spark.version>
+        <scala.binary.version>2.12</scala.binary.version>
+        <jedis.version>4.4.3</jedis.version>
+        <jackson.version>2.15.2</jackson.version>
     </properties>
 
     <modules>
         <module>lakemart-server</module>
+        <module>lakemart-spark</module>
     </modules>
 
     <dependencyManagement>
         <dependencies>
+            <!-- Spring Boot BOM 保持不变 -->
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
                 <version>${spring-boot.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <!-- Spark 及大数据依赖：去掉 type 和 scope -->
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-streaming_${scala.binary.version}</artifactId>
+                <version>${spark.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-streaming-kafka-0-10_${scala.binary.version}</artifactId>
+                <version>${spark.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.module</groupId>
+                <artifactId>jackson-module-scala_${scala.binary.version}</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>redis.clients</groupId>
+                <artifactId>jedis</artifactId>
+                <version>${jedis.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

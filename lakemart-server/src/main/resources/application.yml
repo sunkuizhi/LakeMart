@@ -19,6 +19,11 @@ spring:
     port: ${REDIS_PORT:6379}
   #  kafka:
   #    bootstrap-servers: localhost:9092
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
   mail:
     host: smtp.qq.com
     port: 587
@@ -51,3 +56,4 @@ jwt:
 temp:
   file:
     path: ${TEMP_FILE_PATH:./temp}
+
