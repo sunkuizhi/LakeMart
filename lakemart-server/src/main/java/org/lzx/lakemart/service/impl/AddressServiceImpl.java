@@ -33,7 +33,7 @@ public class AddressServiceImpl extends ServiceImpl<AddressMapper, Address> impl
             // 如果没指定是否默认，则默认非默认
             address.setIsDefault(0);
         }
-        baseMapper.insert(address);
+        baseMapper.insertAddress(address);
     }
 
     /**

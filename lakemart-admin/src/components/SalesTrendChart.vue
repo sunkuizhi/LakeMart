@@ -10,7 +10,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
@@ -23,6 +23,11 @@ import {
 import VChart from 'vue-echarts'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
+
+const props = defineProps({
+  startDate: { type: String, default: '' },
+  endDate: { type: String, default: '' }
+})
 
 use([
   CanvasRenderer,
@@ -45,7 +50,12 @@ const fetchData = async () => {
   const token = localStorage.getItem('token')
   if (!token) return
   try {
-    const res = await axios.get('/api/admin/statistics/sales-trend', {
+    let url = '/api/admin/statistics/sales-trend'
+    const params = {}
+    if (props.startDate) params.startDate = props.startDate
+    if (props.endDate) params.endDate = props.endDate
+    const res = await axios.get(url, {
+      params,
       headers: { Authorization: `Bearer ${token}` }
     })
     if (res.data.code === 0) {
@@ -60,6 +70,10 @@ const fetchData = async () => {
     ElMessage.error('请求失败')
   }
 }
+
+watch(() => [props.startDate, props.endDate], () => {
+  fetchData()
+})
 
 onMounted(fetchData)
 </script>

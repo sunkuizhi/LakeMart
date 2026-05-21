@@ -26,7 +26,7 @@ services:
       - ./redis-data:/data
     networks:
       - lakemart-net
-#  大数据
+
   zookeeper:
     image: zookeeper:3.7
     container_name: lakemart-zookeeper
@@ -41,15 +41,16 @@ services:
     depends_on:
       - zookeeper
     environment:
-      KAFKA_ADVERTISED_HOST_NAME: kafka
+      KAFKA_ADVERTISED_HOST_NAME: localhost   # 修改点：将 kafka 改为 localhost
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_CREATE_TOPICS: "user-actions:1:1"
     ports:
       - "9092:9092"
     networks:
       - lakemart-net
+
   spark:
-    image: apache/spark:3.4.1-scala2.12-java17-python3-ubuntu
+    image: apache/spark:4.0.0-scala2.13-java21-ubuntu
     container_name: lakemart-spark
     depends_on:
       - kafka
@@ -59,12 +60,15 @@ services:
       - ./data/spark-checkpoints:/tmp/spark/checkpoints
     command: >
       /opt/spark/bin/spark-submit
-      --class com.lakemart.spark.HotItemsStreaming
+      --class org.lzx.lakemart.spark.HotItemsStreaming
       --master local[*]
       /app/lakemart-spark.jar
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - REDIS_HOST=redis
+    networks:
+      - lakemart-net
+
   minio:
     image: minio/minio
     container_name: lakemart-minio
@@ -81,55 +85,6 @@ services:
     networks:
       - lakemart-net
 
-  backend:
-    image: lakemart-server:latest
-    container_name: lakemart-backend
-    restart: always
-    ports:
-      - "8080:8080"
-    environment:
-      # 关键：添加 allowPublicKeyRetrieval=true
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/lakemart?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: root
-      SPRING_REDIS_HOST: redis
-      SPRING_REDIS_PORT: 6379
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESSKEY: minioadmin
-      MINIO_SECRETKEY: minioadmin
-      MINIO_BUCKETNAME: lakemart
-      JWT_SECRET: your-256-bit-secret-key-for-jwt-lakemart-project-2026
-      JWT_EXPIRATION: 86400000
-    depends_on:
-      - mysql
-      - redis
-      - minio
-    networks:
-      - lakemart-net
-
-  admin-frontend:
-    image: lakemart-admin:latest
-    container_name: lakemart-admin
-    restart: always
-    ports:
-      - "5173:80"
-    depends_on:
-      - backend
-    networks:
-      - lakemart-net
-
-  client-frontend:
-    image: lakemart-client:latest
-    container_name: lakemart-client
-    restart: always
-    ports:
-      - "5174:80"
-    depends_on:
-      - backend
-    networks:
-      - lakemart-net
-
 networks:
   lakemart-net:
     driver: bridge
-

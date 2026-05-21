@@ -2,15 +2,14 @@ package org.lzx.lakemart.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import org.lzx.lakemart.kafka.UserActionProducer;
 import org.lzx.lakemart.model.dto.LoginRequest;
 import org.lzx.lakemart.model.dto.PasswordChangeRequest;
 import org.lzx.lakemart.model.dto.RegisterRequest;
-import org.lzx.lakemart.model.dto.UserActionLogDTO;
 import org.lzx.lakemart.model.entity.User;
 import org.lzx.lakemart.model.vo.PointsLogVO;
 import org.lzx.lakemart.model.vo.UserVO;
 import org.lzx.lakemart.result.Result;
+import org.lzx.lakemart.security.SecurityUser;
 import org.lzx.lakemart.service.PointsLogService;
 import org.lzx.lakemart.service.UserService;
 import org.lzx.lakemart.util.JwtUtil;
@@ -51,11 +50,11 @@ public class UserController {
 
     @Autowired
     private MinioUtil minioUtil;
-    @Autowired
-    private UserActionProducer userActionProducer;
+
 
     @Autowired
     private HttpServletRequest request;
+
     @GetMapping("/test")
     public String test() {
         return "Hello, LakeMart!";
@@ -99,36 +98,42 @@ public class UserController {
     }
 
     @GetMapping("/points/logs")
-    public Result<Page<PointsLogVO>> getPointsLogs(@AuthenticationPrincipal Long userId,
+    public Result<Page<PointsLogVO>> getPointsLogs(@AuthenticationPrincipal SecurityUser securityUser,
                                                    @RequestParam(name = "pageNum", defaultValue = "1") Integer pageNum,
                                                    @RequestParam(name = "pageSize", defaultValue = "10") Integer pageSize) {
+        Long userId = securityUser.getId();
         Page<PointsLogVO> page = pointsLogService.getUserPointsLogs(userId, pageNum, pageSize);
         return Result.success(page);
     }
 
     @GetMapping("/profile")
-    public Result<UserVO> getProfile(@AuthenticationPrincipal Long userId) {
+    public Result<UserVO> getProfile(@AuthenticationPrincipal SecurityUser securityUser) {
+        Long userId = securityUser.getId();
         User user = userService.getById(userId);
         return Result.success(user.toVO());
     }
+
     @PutMapping("/profile")
-    public Result<String> updateProfile(@AuthenticationPrincipal Long userId,
+    public Result<String> updateProfile(@AuthenticationPrincipal SecurityUser securityUser,
                                         @RequestBody Map<String, Object> updates) {
+        Long userId = securityUser.getId();
         userService.updateProfile(userId, updates);
         return Result.success("更新成功");
     }
 
     @PutMapping("/password")
-    public Result<String> changePassword(@AuthenticationPrincipal Long userId,
+    public Result<String> changePassword(@AuthenticationPrincipal SecurityUser securityUser,
                                          @Valid @RequestBody PasswordChangeRequest request) {
+        Long userId = securityUser.getId();
         userService.changePassword(userId, request.getOldPassword(), request.getNewPassword());
         return Result.success("密码修改成功");
     }
 
     @PostMapping("/avatar")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
-    public Result<String> uploadAvatar(@AuthenticationPrincipal Long userId,
+    public Result<String> uploadAvatar(@AuthenticationPrincipal SecurityUser securityUser,
                                        @RequestParam("file") MultipartFile file) {
+        Long userId = securityUser.getId();
         String avatarUrl = minioUtil.uploadFile(file, "avatar");
         userService.updateAvatar(userId, avatarUrl);
         return Result.success(avatarUrl);
@@ -142,9 +147,10 @@ public class UserController {
     }
 
     @PutMapping("/email")
-    public Result<String> changeEmail(@AuthenticationPrincipal Long userId,
+    public Result<String> changeEmail(@AuthenticationPrincipal SecurityUser securityUser,
                                       @RequestParam String newEmail,
                                       @RequestParam String code) {
+        Long userId = securityUser.getId();
         userService.changeEmail(userId, newEmail, code);
         return Result.success("邮箱修改成功");
     }
@@ -156,17 +162,6 @@ public class UserController {
         userService.resetPassword(email, code, newPassword);
         return Result.success("密码重置成功");
     }
-    @PostMapping("/action")
-    public Result<String> collectAction(@AuthenticationPrincipal Long userId,
-                                        @RequestBody UserActionLogDTO action) {
-        // 填充后端才能获取的信息
-        action.setUserId(userId);
-        action.setTimestamp(System.currentTimeMillis());
-        action.setIp(request.getRemoteAddr());
-        action.setUserAgent(request.getHeader("User-Agent"));
 
-        // 发送到 Kafka
-        userActionProducer.sendAction(action);
-        return Result.success("ok");
-    }
+
 }

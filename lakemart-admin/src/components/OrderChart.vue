@@ -10,7 +10,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
@@ -23,6 +23,11 @@ import {
 import VChart from 'vue-echarts'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
+
+const props = defineProps({
+  startDate: { type: String, default: '' },
+  endDate: { type: String, default: '' }
+})
 
 use([
   CanvasRenderer,
@@ -40,32 +45,40 @@ const option = ref({
   yAxis: { type: 'value', name: '订单数量' },
   series: [{ data: [], type: 'line', smooth: true }]
 })
+
 const fetchData = async () => {
-  console.log('开始请求数据...')
   const token = localStorage.getItem('token')
   if (!token) {
     ElMessage.warning('请先登录')
     return
   }
   try {
-    const response = await axios.get('/api/admin/statistics/order/daily', {
+    // 构建请求参数，传递日期范围
+    let url = '/api/admin/statistics/order/daily'
+    const params = {}
+    if (props.startDate) params.startDate = props.startDate
+    if (props.endDate) params.endDate = props.endDate
+    const response = await axios.get(url, {
+      params,
       headers: { Authorization: `Bearer ${token}` }
     })
-    console.log('响应数据：', response.data)
     if (response.data.code === 0) {
       const data = response.data.data
-      const xAxisData = data.map(item => item.date)
-      const seriesData = data.map(item => item.orderCount)
-      option.value.xAxis.data = xAxisData
-      option.value.series[0].data = seriesData
+      option.value.xAxis.data = data.map(item => item.date)
+      option.value.series[0].data = data.map(item => item.orderCount)
     } else {
       ElMessage.error('获取数据失败：' + response.data.message)
     }
   } catch (error) {
     console.error('请求失败:', error)
-    ElMessage.error('请求后端数据失败，请检查服务是否启动')
+    ElMessage.error('请求后端数据失败')
   }
 }
+
+// 监听父组件传入的日期范围变化
+watch(() => [props.startDate, props.endDate], () => {
+  fetchData()
+})
 
 onMounted(() => {
   fetchData()
@@ -73,8 +86,6 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-@import '@/assets/style/variables.scss';
-
 .chart-card {
   margin-bottom: 20px;
   .card-header {

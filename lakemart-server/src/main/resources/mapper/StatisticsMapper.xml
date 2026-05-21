@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.lzx.lakemart.mapper.StatisticsMapper">
+
+    <!-- 热销商品 TOP N -->
+    <select id="getHotProducts" resultType="java.util.HashMap">
+        SELECT product_id, cnt
+        FROM hot_products
+        ORDER BY cnt DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 总订单数（已支付、已发货、已完成） -->
+    <select id="getTotalOrders" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM tb_order
+        WHERE status IN (1,2,3)
+    </select>
+
+    <!-- 总销售额 -->
+    <select id="getTotalSalesAmount" resultType="java.math.BigDecimal">
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM tb_order
+        WHERE status IN (1,2,3)
+    </select>
+
+    <!-- 总用户数 -->
+    <select id="getTotalUsers" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM tb_user
+    </select>
+
+    <!-- 热销商品表中记录数 -->
+    <select id="getHotProductCount" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM hot_products
+    </select>
+
+</mapper>

@@ -5,6 +5,7 @@ import org.lzx.lakemart.model.dto.AddToCartRequest;
 import org.lzx.lakemart.model.dto.UpdateCartRequest;
 import org.lzx.lakemart.model.vo.CartItemVO;
 import org.lzx.lakemart.result.Result;
+import org.lzx.lakemart.security.SecurityUser;
 import org.lzx.lakemart.service.CartItemService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -23,8 +24,9 @@ public class CartController {
      * 需要登录，从 Security 上下文中获取当前用户ID
      */
     @PostMapping("/add")
-    public Result<String> addToCart(@AuthenticationPrincipal Long userId,
+    public Result<String> addToCart(@AuthenticationPrincipal SecurityUser securityUser,
                                     @Valid @RequestBody AddToCartRequest request) {
+        Long userId = securityUser.getId();
         cartItemService.addToCart(userId, request.getProductId(), request.getQuantity());
         return Result.success("添加成功");
     }
@@ -33,7 +35,8 @@ public class CartController {
      * 获取当前用户的购物车列表
      */
     @GetMapping("/list")
-    public Result<List<CartItemVO>> getCartList(@AuthenticationPrincipal Long userId) {
+    public Result<List<CartItemVO>> getCartList(@AuthenticationPrincipal SecurityUser securityUser) {
+        Long userId = securityUser.getId();
         List<CartItemVO> list = cartItemService.getCartList(userId);
         return Result.success(list);
     }
@@ -60,7 +63,8 @@ public class CartController {
      * 清空购物车（下单后调用）
      */
     @DeleteMapping("/clear")
-    public Result<String> clearCart(@AuthenticationPrincipal Long userId) {
+    public Result<String> clearCart(@AuthenticationPrincipal SecurityUser securityUser) {
+        Long userId = securityUser.getId();
         cartItemService.clearCart(userId);
         return Result.success("清空成功");
     }

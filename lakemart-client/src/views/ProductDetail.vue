@@ -20,11 +20,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 import { getProductDetail } from '@/api/product'
+import request from '@/api/request'   // 引入封装好的 request（会自动携带 token）
 
 const route = useRoute()
 const router = useRouter()
@@ -51,6 +52,16 @@ const fetchDetail = async () => {
   }
 }
 
+// 商品加载完成后发送浏览埋点
+watch(product, (newVal) => {
+  if (newVal && newVal.id) {
+    request.post('/behavior/track', {
+      action: 'VIEW_PRODUCT',
+      productId: newVal.id
+    }).catch(e => console.warn('浏览埋点失败', e))
+  }
+})
+
 const addToCart = async () => {
   const token = localStorage.getItem('token')
   if (!token) {
@@ -60,7 +71,6 @@ const addToCart = async () => {
   }
   if (!product.value) return
 
-  // 防止重复点击（可选）
   const btn = document.querySelector('.el-button--primary') as HTMLButtonElement
   if (btn) btn.disabled = true
 
@@ -74,6 +84,11 @@ const addToCart = async () => {
     console.log('添加购物车响应：', response)
     if (response.data.code === 0) {
       ElMessage.success('已加入购物车')
+      // 加购埋点
+      request.post('/behavior/track', {
+        action: 'ADD_CART',
+        productId: product.value.id
+      }).catch(e => console.warn('加购埋点失败', e))
     } else {
       ElMessage.error(response.data.message || '添加失败')
     }

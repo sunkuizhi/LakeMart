@@ -9,7 +9,6 @@ spring:
       max-file-size: 10MB
       max-request-size: 10MB
   datasource:
-#    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:lakemart}?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3307}/${DB_NAME:lakemart}?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8&allowPublicKeyRetrieval=true
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:root}
@@ -17,13 +16,17 @@ spring:
   redis:
     host: ${REDIS_HOST:localhost}
     port: ${REDIS_PORT:6379}
-  #  kafka:
-  #    bootstrap-servers: localhost:9092
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    bootstrap-servers: localhost:9092
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        options:
+          model: gpt-3.5-turbo
   mail:
     host: smtp.qq.com
     port: 587
@@ -56,4 +59,3 @@ jwt:
 temp:
   file:
     path: ${TEMP_FILE_PATH:./temp}
-

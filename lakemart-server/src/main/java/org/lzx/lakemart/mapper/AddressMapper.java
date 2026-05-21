@@ -14,5 +14,5 @@ import org.lzx.lakemart.model.entity.Address;
  */
 @Mapper
 public interface AddressMapper extends BaseMapper<Address> {
-
+    int insertAddress(Address address);
 }

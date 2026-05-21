@@ -14,11 +14,11 @@
         <spring-boot.version>3.5.13</spring-boot.version>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
-        <!-- 开启编译参数名称保留，解决 @RequestParam 和 @PathVariable 参数名解析问题 -->
         <maven.compiler.parameters>true</maven.compiler.parameters>
+
         <!-- Spark & Kafka 集成相关版本 -->
-        <spark.version>3.4.1</spark.version>
-        <scala.binary.version>2.12</scala.binary.version>
+        <spark.version>4.0.0</spark.version>
+        <scala.binary.version>2.13</scala.binary.version>
         <jedis.version>4.4.3</jedis.version>
         <jackson.version>2.15.2</jackson.version>
     </properties>
@@ -30,7 +30,6 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- Spring Boot BOM 保持不变 -->
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
@@ -39,7 +38,6 @@
                 <scope>import</scope>
             </dependency>
 
-            <!-- Spark 及大数据依赖：去掉 type 和 scope -->
             <dependency>
                 <groupId>org.apache.spark</groupId>
                 <artifactId>spark-streaming_${scala.binary.version}</artifactId>
@@ -59,6 +57,12 @@
                 <groupId>redis.clients</groupId>
                 <artifactId>jedis</artifactId>
                 <version>${jedis.version}</version>
+            </dependency>
+            <!-- Kafka 客户端版本（可选，Spark 4.0.0 默认依赖 3.7.0 左右） -->
+            <dependency>
+                <groupId>org.apache.kafka</groupId>
+                <artifactId>kafka-clients</artifactId>
+                <version>3.7.0</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
