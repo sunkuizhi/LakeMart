@@ -27,4 +27,11 @@ public interface CategoryService extends IService<Category> {
     void deleteCategory(Long id);
     //禁用分类
     void updateStatus(Long id, Integer status);
+
+    /**
+     * 获取指定分类及其所有子分类的ID列表（包含自身）
+     * @param parentId 分类ID（可以是任意层级）
+     * @return 包含自身及所有子孙分类ID的列表
+     */
+    List<Long> getAllSubCategoryIds(Long parentId);
 }

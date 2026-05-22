@@ -30,7 +30,12 @@ const router = createRouter({
         { path: 'categories', name: 'categories', component: Categories },
         { path: 'profile', name: 'profile', component: () => import('../views/Profile.vue') },
         { path: 'banner', name: 'banner', component: () => import('../views/Banner.vue'), meta: { requiresAuth: true } },
-        { path: 'profile', name: 'profile', component: () => import('../views/Profile.vue'), meta: { requiresAuth: true } }
+        { path: 'profile', name: 'profile', component: () => import('../views/Profile.vue'), meta: { requiresAuth: true } },
+        {         path: '/sales-forecast',
+          name: 'SalesForecast',
+          component: () => import('@/views/SalesForecast.vue'),
+          meta: { title: '销量预测', requiresAuth: true, role: 'admin' }
+        }
       ]
     }
   ]

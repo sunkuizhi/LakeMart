@@ -5,12 +5,13 @@
         <span>近七日订单趋势</span>
       </div>
     </template>
-    <v-chart class="chart" :option="option" autoresize />
+    <v-chart class="chart" :option="option" autoresize @click="handleChartClick" />
   </el-card>
 </template>
 
 <script setup>
 import { ref, watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
@@ -24,6 +25,7 @@ import VChart from 'vue-echarts'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
+const router = useRouter()
 const props = defineProps({
   startDate: { type: String, default: '' },
   endDate: { type: String, default: '' }
@@ -53,8 +55,7 @@ const fetchData = async () => {
     return
   }
   try {
-    // 构建请求参数，传递日期范围
-    let url = '/api/admin/statistics/order/daily'
+    const url = '/api/admin/statistics/order/daily'
     const params = {}
     if (props.startDate) params.startDate = props.startDate
     if (props.endDate) params.endDate = props.endDate
@@ -75,7 +76,17 @@ const fetchData = async () => {
   }
 }
 
-// 监听父组件传入的日期范围变化
+// 点击图表下钻：跳转到订单管理页面并筛选当前日期
+const handleChartClick = (params) => {
+  // 仅处理系列（折线）的点击
+  if (params.componentType === 'series') {
+    const date = option.value.xAxis.data[params.dataIndex]
+    if (date) {
+      router.push({ path: '/orders', query: { startDate: date, endDate: date } })
+    }
+  }
+}
+
 watch(() => [props.startDate, props.endDate], () => {
   fetchData()
 })
@@ -88,12 +99,15 @@ onMounted(() => {
 <style scoped lang="scss">
 .chart-card {
   margin-bottom: 20px;
+
   .card-header {
     font-weight: bold;
   }
 }
+
 .chart {
   height: 400px;
   width: 100%;
+  cursor: pointer;
 }
 </style>

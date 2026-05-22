@@ -181,8 +181,8 @@ LakeMart/
 #### 数据仪表盘（大数据分析核心）
 
 ![仪表盘概览](./screenshots/管理端仪表盘1.png)
-
-![仪表盘大数据模块（漏斗/RFM/预测）](./screenshots/管理端仪表盘2.png)
+![仪表盘概览](./screenshots/管理端仪表盘2.png)
+![仪表盘大数据模块（漏斗/RFM/预测）](./screenshots/管理端仪表盘3.png)
 
 #### 基础管理功能
 

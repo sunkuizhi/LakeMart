@@ -1,7 +1,7 @@
 <template>
-  <div class="dashboard-container">
-    <!-- 日期范围选择器 -->
-    <div class="date-range-toolbar">
+  <div class="dashboard-container" :class="{ 'fullscreen-mode': isFullscreen }">
+    <!-- 顶部工具栏：日期选择器 + 全屏按钮 -->
+    <div class="top-toolbar">
       <el-date-picker
         v-model="dateRange"
         type="daterange"
@@ -12,10 +12,14 @@
         value-format="YYYY-MM-DD"
         :shortcuts="shortcuts"
         @change="handleDateChange"
+        style="width: 300px;"
       />
+      <el-button type="primary" :icon="isFullscreen ? 'FullScreenExit' : 'FullScreen'" @click="toggleFullscreen">
+        {{ isFullscreen ? '退出全屏' : '全屏模式' }}
+      </el-button>
     </div>
 
-    <!-- 数据概览卡片 -->
+    <!-- 数据概览卡片（始终显示） -->
     <el-row :gutter="20" class="overview-row">
       <el-col :span="6" v-for="card in overviewCards" :key="card.title">
         <el-card class="overview-card" shadow="hover">
@@ -25,55 +29,70 @@
       </el-col>
     </el-row>
 
-    <!-- 图表行 1（支持日期范围） -->
-    <el-row :gutter="20" class="chart-row">
-      <el-col :span="12">
-        <OrderChart :start-date="startDate" :end-date="endDate" />
-      </el-col>
-      <el-col :span="12">
-        <SalesTrendChart :start-date="startDate" :end-date="endDate" />
-      </el-col>
-    </el-row>
+    <!-- 使用 Tabs 分组 -->
+    <el-tabs v-model="activeTab" type="border-card" class="dashboard-tabs">
+      <!-- Tab 1: 销售趋势 -->
+      <el-tab-pane label="销售趋势" name="sales">
+        <el-row :gutter="20" class="chart-row">
+          <el-col :span="12">
+            <OrderChart :start-date="startDate" :end-date="endDate" />
+          </el-col>
+          <el-col :span="12">
+            <SalesTrendChart :start-date="startDate" :end-date="endDate" />
+          </el-col>
+        </el-row>
+      </el-tab-pane>
 
-    <!-- 图表行 2（暂不支持日期范围） -->
-    <el-row :gutter="20" class="chart-row">
-      <el-col :span="12">
-        <HotProductsChart />
-      </el-col>
-      <el-col :span="12">
-        <BehaviorTrendChart />
-      </el-col>
-    </el-row>
+      <!-- Tab 2: 商品分析 -->
+      <el-tab-pane label="商品分析" name="product">
+        <el-row :gutter="20" class="chart-row">
+          <el-col :span="24">
+            <HotProductsChart />
+          </el-col>
+        </el-row>
+        <el-row :gutter="20" class="chart-row">
+          <el-col :span="24">
+            <div style="text-align: center; padding: 20px;">
+              <el-button type="primary" size="large" @click="$router.push('/sales-forecast')">
+                前往销量预测详情
+              </el-button>
+            </div>
+          </el-col>
+        </el-row>
+      </el-tab-pane>
 
-    <!-- 图表行 3：行为分布 + 漏斗图 -->
-    <el-row :gutter="20" class="chart-row">
-      <el-col :span="12">
-        <BehaviorDistributionChart />
-      </el-col>
-      <el-col :span="12">
-        <FunnelChart />
-      </el-col>
-    </el-row>
-    <!-- 图表行 4：RFM 分析 -->
-    <el-row :gutter="20" class="chart-row">
-      <el-col :span="24">
-        <RfmAnalysis />
-      </el-col>
-    </el-row>
-    <!-- 图表行：销量预测 -->
-    <el-row :gutter="20" class="chart-row">
-      <el-col :span="24">
-        <SalesPrediction />
-      </el-col>
-    </el-row>
+      <!-- Tab 3: 用户分析 -->
+      <el-tab-pane label="用户分析" name="user">
+        <el-row :gutter="20" class="chart-row">
+          <el-col :span="12">
+            <BehaviorDistributionChart />
+          </el-col>
+          <el-col :span="12">
+            <FunnelChart />
+          </el-col>
+        </el-row>
+        <el-row :gutter="20" class="chart-row">
+          <el-col :span="24">
+            <RfmAnalysis />
+          </el-col>
+        </el-row>
+      </el-tab-pane>
 
-
-
+      <!-- Tab 4: 实时监控 -->
+      <el-tab-pane label="实时监控" name="realtime">
+        <el-row :gutter="20" class="chart-row">
+          <el-col :span="24">
+            <BehaviorTrendChart />
+          </el-col>
+        </el-row>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, provide, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import OrderChart from '@/components/OrderChart.vue'
 import SalesTrendChart from '@/components/SalesTrendChart.vue'
 import HotProductsChart from '@/components/HotProductsChart.vue'
@@ -81,39 +100,74 @@ import BehaviorTrendChart from '@/components/BehaviorTrendChart.vue'
 import BehaviorDistributionChart from '@/components/BehaviorDistributionChart.vue'
 import FunnelChart from '@/components/FunnelChart.vue'
 import RfmAnalysis from '@/components/RfmAnalysis.vue'
-import SalesPrediction from '@/components/SalesPrediction.vue'
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
 
-// 日期范围相关
+// 全屏状态
+const isFullscreen = ref(false)
+
+// 全屏切换函数
+const toggleFullscreen = () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen()
+    isFullscreen.value = true
+  } else {
+    document.exitFullscreen()
+    isFullscreen.value = false
+  }
+}
+
+// 监听全屏变化事件
+const handleFullscreenChange = () => {
+  isFullscreen.value = !!document.fullscreenElement
+}
+
+onMounted(() => {
+  document.addEventListener('fullscreenchange', handleFullscreenChange)
+  fetchOverview()
+})
+
+// 销毁时移除监听
+import { onUnmounted } from 'vue'
+onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', handleFullscreenChange)
+})
+
+// 日期范围相关（保持不变）
+const activeTab = ref('sales')
 const dateRange = ref([])
-// 快捷选项（近7天、近30天、本月等）
 const shortcuts = [
-  { text: '最近7天', value: () => {
+  {
+    text: '最近7天',
+    value: () => {
       const end = new Date()
       const start = new Date()
       start.setTime(start.getTime() - 3600 * 1000 * 24 * 7)
       return [start, end]
-    }},
-  { text: '最近30天', value: () => {
+    }
+  },
+  {
+    text: '最近30天',
+    value: () => {
       const end = new Date()
       const start = new Date()
       start.setTime(start.getTime() - 3600 * 1000 * 24 * 30)
       return [start, end]
-    }},
-  { text: '本月', value: () => {
+    }
+  },
+  {
+    text: '本月',
+    value: () => {
       const end = new Date()
       const start = new Date(end.getFullYear(), end.getMonth(), 1)
       return [start, end]
-    }}
+    }
+  }
 ]
 
-// 计算属性：格式化的开始/结束日期（如果没有选择，则默认为最近7天）
 const startDate = computed(() => {
   if (dateRange.value && dateRange.value.length === 2) {
     return dateRange.value[0]
   }
-  // 默认最近7天
   const end = new Date()
   const start = new Date()
   start.setDate(start.getDate() - 7)
@@ -126,7 +180,8 @@ const endDate = computed(() => {
   return new Date().toISOString().slice(0, 10)
 })
 
-// 日期变化时，子组件会通过 watch props 自动刷新，无需额外操作
+provide('globalDateRange', { startDate, endDate })
+
 const handleDateChange = () => {
   console.log('日期范围已更改', startDate.value, endDate.value)
 }
@@ -160,21 +215,42 @@ const fetchOverview = async () => {
     console.error('获取概览数据失败', error)
   }
 }
-
-onMounted(() => {
-  fetchOverview()
-})
 </script>
 
 <style scoped lang="scss">
 .dashboard-container {
   padding: 20px;
   background-color: #f0f2f5;
+  transition: all 0.2s;
+
+  // 全屏模式下的样式调整
+  &.fullscreen-mode {
+    padding: 0;
+    background-color: #fff;
+
+    .top-toolbar {
+      padding: 12px 20px;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .overview-card {
+      .card-value {
+        font-size: 32px;
+      }
+    }
+    .chart {
+      height: 480px; // 全屏下图表更高
+    }
+  }
 }
-.date-range-toolbar {
+
+.top-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 20px;
-  text-align: right;
 }
+
 .overview-row {
   margin-bottom: 20px;
 }
@@ -190,6 +266,10 @@ onMounted(() => {
     margin-top: 10px;
     color: #409eff;
   }
+}
+.dashboard-tabs {
+  background-color: #fff;
+  border-radius: 4px;
 }
 .chart-row {
   margin-bottom: 20px;

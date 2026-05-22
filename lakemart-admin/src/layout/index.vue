@@ -9,6 +9,7 @@
         text-color="#bfcbd9"
         active-text-color="#409EFF"
       >
+        <!-- 核心模块 -->
         <el-menu-item index="/dashboard">
           <el-icon><Odometer /></el-icon>
           <span>仪表盘</span>
@@ -32,6 +33,11 @@
         <el-menu-item index="/banner">
           <el-icon><Picture /></el-icon>
           <span>轮播图管理</span>
+        </el-menu-item>
+        <!-- 数据分析模块 -->
+        <el-menu-item index="/sales-forecast">
+          <el-icon><TrendCharts /></el-icon>
+          <span>销量预测</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -59,7 +65,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Odometer, Goods, List, User, Folder, Picture } from '@element-plus/icons-vue'
+import { Odometer, Goods, List, User, Folder, Picture, TrendCharts } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()

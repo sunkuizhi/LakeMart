@@ -4,7 +4,10 @@
       <template #header>
         <div class="flex-between">
           <span>订单管理</span>
-          <el-button @click="fetchData">刷新</el-button>
+          <div>
+            <el-button type="success" @click="exportOrders" :loading="exportLoading">导出 Excel</el-button>
+            <el-button @click="fetchData">刷新</el-button>
+          </div>
         </div>
       </template>
 
@@ -24,6 +27,19 @@
             <el-option label="已完成" :value="3" />
             <el-option label="已取消" :value="4" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="下单日期">
+          <el-date-picker
+            v-model="dateRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            @change="handleDateRangeChange"
+            style="width: 260px"
+          />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">搜索</el-button>
@@ -78,30 +94,45 @@
         class="pagination"
       />
     </el-card>
-
-    <!-- 订单详情弹窗（可选，如果用新页面则可删除） -->
-    <!-- 这里保留原有弹窗，但详情按钮改为跳转页面，所以弹窗可以注释掉，为简洁暂不删除 -->
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 
+const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const tableData = ref([])
 const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
+const exportLoading = ref(false)
+
+// 日期范围
+const dateRange = ref([])
 
 const searchForm = reactive({
   orderNo: '',
   userId: undefined,
-  status: undefined
+  status: undefined,
+  startDate: '',
+  endDate: ''
 })
+
+// 日期范围变化处理
+const handleDateRangeChange = (val) => {
+  if (val && val.length === 2) {
+    searchForm.startDate = val[0]
+    searchForm.endDate = val[1]
+  } else {
+    searchForm.startDate = ''
+    searchForm.endDate = ''
+  }
+}
 
 // 获取订单列表
 const fetchData = async () => {
@@ -112,7 +143,9 @@ const fetchData = async () => {
       pageSize: pageSize.value,
       orderNo: searchForm.orderNo || undefined,
       userId: searchForm.userId,
-      status: searchForm.status
+      status: searchForm.status,
+      startDate: searchForm.startDate || undefined,
+      endDate: searchForm.endDate || undefined
     }
     const res = await axios.post('/api/admin/order/list', params, {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
@@ -142,6 +175,9 @@ const resetSearch = () => {
   searchForm.orderNo = ''
   searchForm.userId = undefined
   searchForm.status = undefined
+  searchForm.startDate = ''
+  searchForm.endDate = ''
+  dateRange.value = []
   handleSearch()
 }
 
@@ -172,8 +208,54 @@ const handleDetail = (orderId) => {
   router.push(`/orders/detail/${orderId}`)
 }
 
+// 导出 Excel（根据当前搜索条件，不分页）
+const exportOrders = async () => {
+  exportLoading.value = true
+  try {
+    const params = {
+      orderNo: searchForm.orderNo || undefined,
+      userId: searchForm.userId,
+      status: searchForm.status,
+      startDate: searchForm.startDate || undefined,
+      endDate: searchForm.endDate || undefined
+    }
+    const response = await axios.post('/api/admin/order/export', params, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      responseType: 'blob'
+    })
+    // 创建下载链接
+    const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `orders_${new Date().getTime()}.xlsx`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('导出失败，请稍后重试')
+  } finally {
+    exportLoading.value = false
+  }
+}
+
+// 页面加载时读取 URL 参数
 onMounted(() => {
-  fetchData()
+  const startDate = route.query.startDate
+  const endDate = route.query.endDate
+  if (startDate && endDate) {
+    // 设置日期范围
+    dateRange.value = [startDate, endDate]
+    searchForm.startDate = startDate
+    searchForm.endDate = endDate
+    fetchData()
+    ElMessage.info(`正在显示 ${startDate} 的订单`)
+  } else {
+    fetchData()
+  }
 })
 </script>
 

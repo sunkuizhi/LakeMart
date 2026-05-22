@@ -1,50 +1,55 @@
 package org.lzx.lakemart.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import org.lzx.lakemart.mapper.ProductMapper;
 import org.lzx.lakemart.model.dto.ProductPageQueryDTO;
+import org.lzx.lakemart.model.dto.ProductQueryDTO;
 import org.lzx.lakemart.model.entity.Category;
+import org.lzx.lakemart.model.entity.Product;
+import org.lzx.lakemart.model.vo.ProductVO;
 import org.lzx.lakemart.service.CategoryService;
+import org.lzx.lakemart.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import org.lzx.lakemart.model.dto.ProductQueryDTO;
-import org.lzx.lakemart.model.entity.Product;
-import org.lzx.lakemart.mapper.ProductMapper;
-import org.lzx.lakemart.model.vo.ProductVO;
-import org.lzx.lakemart.service.ProductService;
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import org.springframework.stereotype.Service;
-
 import java.util.stream.Collectors;
 
-/**
- * <p>
- * 商品表 服务实现类
- * </p>
- *
- * @author lzx
- * @since 2026-04-20
- */
 @Service
 public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> implements ProductService {
 
     @Autowired
-    private CategoryService categoryService;   // 新增注入
+    private CategoryService categoryService;
+
     @Override
     public Page<ProductVO> queryPage(ProductQueryDTO query) {
-        // 构建分页对象
         Page<Product> page = new Page<>(query.getPageNum(), query.getPageSize());
-        // 构建查询条件
         LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
+
+        // 分类筛选逻辑：优先精确匹配 categoryId，否则使用 parentCategoryId（包含子分类）
         if (query.getCategoryId() != null) {
             wrapper.eq(Product::getCategoryId, query.getCategoryId());
+        } else if (query.getParentCategoryId() != null) {
+            List<Long> categoryIds = categoryService.getAllSubCategoryIds(query.getParentCategoryId());
+            if (!categoryIds.isEmpty()) {
+                wrapper.in(Product::getCategoryId, categoryIds);
+            } else {
+                // 如果传入的父分类不存在或无子分类（实际不可能无自身），让结果为空
+                wrapper.eq(Product::getCategoryId, -1L);
+            }
         }
+
+        // 模糊搜索商品名称
         if (query.getKeyword() != null && !query.getKeyword().isEmpty()) {
             wrapper.like(Product::getName, query.getKeyword());
         }
-        // 状态为上架（用户端只显示上架商品）
+
+        // 用户端只显示上架商品
         wrapper.eq(Product::getStatus, 1);
+
         // 排序
         if (query.getSortBy() != null) {
             boolean isAsc = "asc".equalsIgnoreCase(query.getSortOrder());
@@ -64,12 +69,12 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
         } else {
             wrapper.orderByDesc(Product::getCreateTime);
         }
-        // 查询
+
         Page<Product> productPage = baseMapper.selectPage(page, wrapper);
-        // 转换为 ProductVO
+
+        // 转换为 ProductVO，并补充分类名称
         Page<ProductVO> voPage = new Page<>(productPage.getCurrent(), productPage.getSize(), productPage.getTotal());
         List<ProductVO> voList = productPage.getRecords().stream().map(product -> {
-            // 查询分类名称（可以缓存，这里简单处理）
             Category category = categoryService.getById(product.getCategoryId());
             return ProductVO.builder()
                     .id(product.getId())
@@ -88,6 +93,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
         voPage.setRecords(voList);
         return voPage;
     }
+
     @Override
     public Page<ProductVO> adminQueryPage(ProductPageQueryDTO query) {
         Page<Product> page = new Page<>(query.getPageNum(), query.getPageSize());
@@ -102,11 +108,10 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
             wrapper.eq(Product::getStatus, query.getStatus());
         }
         wrapper.orderByDesc(Product::getCreateTime);
+
         Page<Product> productPage = baseMapper.selectPage(page, wrapper);
-        // 转换为 VO
         Page<ProductVO> voPage = new Page<>(productPage.getCurrent(), productPage.getSize(), productPage.getTotal());
         List<ProductVO> voList = productPage.getRecords().stream().map(product -> {
-            // 补充分类名
             Category category = categoryService.getById(product.getCategoryId());
             return ProductVO.builder()
                     .id(product.getId())
@@ -129,14 +134,13 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
     @Override
     public void addProduct(Product product) {
         product.setSalesCount(0);
-        product.setStatus(1); // 默认上架
+        product.setStatus(1);
         product.setCreateTime(LocalDateTime.now());
         baseMapper.insert(product);
     }
 
     @Override
     public void updateProduct(Product product) {
-        // 只更新允许修改的字段
         Product exist = baseMapper.selectById(product.getId());
         if (exist == null) {
             throw new RuntimeException("商品不存在");
@@ -160,10 +164,6 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
 
     @Override
     public void deleteProduct(Long id) {
-        // 检查是否有订单关联，如果有则不允许删除（或者逻辑删除）
         baseMapper.deleteById(id);
     }
-
-
-
 }

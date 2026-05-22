@@ -11,7 +11,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, inject, watch, onMounted } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { FunnelChart } from 'echarts/charts'
@@ -31,6 +31,9 @@ use([
   TooltipComponent,
   LegendComponent
 ])
+
+// 注入父组件提供的日期范围
+const { startDate, endDate } = inject('globalDateRange')
 
 const option = ref({
   title: {
@@ -69,11 +72,14 @@ const fetchData = async () => {
   if (!token) return
   try {
     const res = await axios.get('/api/admin/statistics/funnel-analysis', {
+      params: {
+        startDate: startDate.value,
+        endDate: endDate.value
+      },
       headers: { Authorization: `Bearer ${token}` }
     })
     if (res.data.code === 0) {
       const steps = res.data.data.steps
-      // 准备漏斗数据：name, value (count)
       const funnelData = steps.map(step => ({
         name: step.name,
         value: step.count
@@ -92,6 +98,11 @@ const fetchData = async () => {
 const refreshData = () => {
   fetchData()
 }
+
+// 监听日期范围变化，重新获取数据
+watch([startDate, endDate], () => {
+  fetchData()
+})
 
 onMounted(() => {
   fetchData()

@@ -246,6 +246,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         order.setStatus(4);
         this.updateById(order);
     }
+
     @Override
     public Page<OrderVO> adminQueryOrders(OrderPageQueryDTO query) {
         Page<Order> page = new Page<>(query.getPageNum(), query.getPageSize());
@@ -255,6 +256,17 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         }
         if (query.getStatus() != null) {
             wrapper.eq(Order::getStatus, query.getStatus());
+        }
+        // 新增日期范围筛选
+        if (query.getStartDate() != null && query.getEndDate() != null) {
+            // 注意 startDate 和 endDate 是 LocalDate 类型，需要转为 LocalDateTime
+            wrapper.between(Order::getCreateTime,
+                    query.getStartDate().atStartOfDay(),
+                    query.getEndDate().atTime(23, 59, 59));
+        } else if (query.getStartDate() != null) {
+            wrapper.ge(Order::getCreateTime, query.getStartDate().atStartOfDay());
+        } else if (query.getEndDate() != null) {
+            wrapper.le(Order::getCreateTime, query.getEndDate().atTime(23, 59, 59));
         }
         wrapper.orderByDesc(Order::getCreateTime);
         Page<Order> orderPage = baseMapper.selectPage(page, wrapper);
@@ -268,7 +280,6 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         voPage.setRecords(voList);
         return voPage;
     }
-
     @Override
     @Transactional
     public void adminUpdateOrderStatus(Long orderId, Integer status) {

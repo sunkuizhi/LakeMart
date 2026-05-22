@@ -4,6 +4,7 @@ import org.lzx.lakemart.model.dto.OrderStatisticsDTO;
 import org.lzx.lakemart.model.vo.DailyAmountVO;
 import org.lzx.lakemart.model.vo.ProductSalesVO;
 import org.lzx.lakemart.result.Result;
+import org.lzx.lakemart.service.CategoryService;
 import org.lzx.lakemart.service.OrderService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -24,6 +25,8 @@ public class AdminStatisticsController {
 
     @Autowired
     private OrderService orderService;
+    @Autowired
+    private CategoryService categoryService;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -38,16 +41,27 @@ public class AdminStatisticsController {
     }
 
     @GetMapping("/hot-products")
-    public Result<List<ProductSalesVO>> getHotProducts(@RequestParam(name = "limit", defaultValue = "10") int limit) {
-        String sql = "SELECT hp.product_id, p.name as product_name, hp.cnt " +
-                "FROM hot_products hp " +
-                "LEFT JOIN tb_product p ON hp.product_id = p.id " +
-                "ORDER BY hp.cnt DESC LIMIT " + limit;
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql);
+    public Result<List<ProductSalesVO>> getHotProducts(
+            @RequestParam(name = "limit", defaultValue = "10") int limit,
+            @RequestParam(name = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+
+        if (startDate == null) startDate = LocalDate.now().minusDays(30);
+        if (endDate == null) endDate = LocalDate.now();
+
+        String sql = "SELECT oi.product_id, p.name as product_name, SUM(oi.quantity) as cnt " +
+                "FROM tb_order o " +
+                "JOIN tb_order_item oi ON o.id = oi.order_id " +
+                "LEFT JOIN tb_product p ON oi.product_id = p.id " +
+                "WHERE o.status IN (1,2,3) " +
+                "AND DATE(o.create_time) BETWEEN ? AND ? " +
+                "GROUP BY oi.product_id, p.name " +
+                "ORDER BY cnt DESC LIMIT ?";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, startDate, endDate, limit);
         List<ProductSalesVO> result = rows.stream().map(row -> {
             Long productId = ((Number) row.get("product_id")).longValue();
             String productName = (String) row.get("product_name");
-            Integer cnt = (Integer) row.get("cnt");
+            Integer cnt = ((Number) row.get("cnt")).intValue();
             return ProductSalesVO.builder()
                     .productId(productId)
                     .productName(productName != null ? productName : "商品" + productId)
@@ -69,26 +83,32 @@ public class AdminStatisticsController {
     public Result<List<Map<String, Object>>> getBehaviorTrend(@RequestParam(name = "minutes", defaultValue = "60") int minutes) {
         return Result.success(getBehaviorTrendData(minutes));
     }
+
     @GetMapping("/action-distribution")
-    public Result<List<Map<String, Object>>> getActionDistribution() {
+    public Result<List<Map<String, Object>>> getActionDistribution(
+            @RequestParam(name = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+
+        if (startDate == null) startDate = LocalDate.now().minusDays(30);
+        if (endDate == null) endDate = LocalDate.now();
+
         String sql = "SELECT action, COUNT(*) as cnt FROM user_behavior_log " +
-                "WHERE create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY) " +
+                "WHERE DATE(create_time) BETWEEN ? AND ? " +
                 "GROUP BY action ORDER BY cnt DESC";
         List<Map<String, Object>> rows;
         try {
-            rows = jdbcTemplate.queryForList(sql);
+            rows = jdbcTemplate.queryForList(sql, startDate, endDate);
         } catch (Exception e) {
             rows = new ArrayList<>();
         }
 
-        // 标准化行为名称，合并相同含义
+        // 标准化行为名称
         Map<String, Integer> merged = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {
             String action = (String) row.get("action");
             Integer cnt = ((Number) row.get("cnt")).intValue();
             if (action == null) continue;
             String normalized = action.trim();
-            // 统一映射（支持中英文混合）
             if (normalized.equalsIgnoreCase("add_cart") || normalized.equalsIgnoreCase("addCart") || normalized.equals("加入购物车")) {
                 normalized = "加入购物车";
             } else if (normalized.equalsIgnoreCase("create_order") || normalized.equalsIgnoreCase("order") || normalized.equals("生成订单")) {
@@ -112,7 +132,6 @@ public class AdminStatisticsController {
                 })
                 .collect(Collectors.toList());
 
-        // 无数据时返回模拟示例
         if (result.isEmpty()) {
             result = List.of(
                     Map.of("action", "浏览商品", "cnt", 1250),
@@ -124,6 +143,7 @@ public class AdminStatisticsController {
         }
         return Result.success(result);
     }
+
     @GetMapping("/overview")
     public Result<Map<String, Object>> getOverview() {
         Map<String, Object> data = new HashMap<>();
@@ -144,14 +164,11 @@ public class AdminStatisticsController {
     // ==================== 新增实时模拟接口 ====================
     @PostMapping("/behavior/simulate")
     public Result<Map<String, Object>> simulateRealTimeBehavior() {
-        // 1. 随机插入一条行为
         String[] actions = {"浏览商品", "加入购物车", "生成订单", "支付成功", "搜索"};
         String randomAction = actions[new Random().nextInt(actions.length)];
         Long randomUserId = (long) (new Random().nextInt(16) + 1);
         String insertSql = "INSERT INTO user_behavior_log (user_id, action, create_time) VALUES (?, ?, NOW())";
         jdbcTemplate.update(insertSql, randomUserId, randomAction);
-
-        // 2. 返回最新的60分钟趋势数据
         List<Map<String, Object>> trend = getBehaviorTrendData(60);
         Map<String, Object> result = new HashMap<>();
         result.put("trend", trend);
@@ -179,7 +196,7 @@ public class AdminStatisticsController {
             Map<String, Object> item = new HashMap<>();
             String minuteStr = (String) row.get("minute");
             if (minuteStr != null && minuteStr.length() >= 16) {
-                minuteStr = minuteStr.substring(11, 16); // 只保留 HH:MM
+                minuteStr = minuteStr.substring(11, 16);
             }
             item.put("minute", minuteStr);
             Object cntObj = row.get("cnt");
@@ -206,15 +223,12 @@ public class AdminStatisticsController {
     public Result<Map<String, Object>> getFunnelAnalysis(
             @RequestParam(name = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-
-        // 默认最近30天
         if (startDate == null) startDate = LocalDate.now().minusDays(30);
         if (endDate == null) endDate = LocalDate.now();
 
         String startDateTime = startDate.atStartOfDay().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         String endDateTime = endDate.atTime(23, 59, 59).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
-        // 统计各阶段的独立用户数
         String sqlBrowse = "SELECT COUNT(DISTINCT user_id) FROM user_behavior_log WHERE action = '浏览商品' AND create_time BETWEEN ? AND ?";
         String sqlCart = "SELECT COUNT(DISTINCT user_id) FROM user_behavior_log WHERE action = '加入购物车' AND create_time BETWEEN ? AND ?";
         String sqlOrder = "SELECT COUNT(DISTINCT user_id) FROM user_behavior_log WHERE action = '生成订单' AND create_time BETWEEN ? AND ?";
@@ -225,13 +239,11 @@ public class AdminStatisticsController {
         Long orderUsers = jdbcTemplate.queryForObject(sqlOrder, Long.class, startDateTime, endDateTime);
         Long payUsers = jdbcTemplate.queryForObject(sqlPay, Long.class, startDateTime, endDateTime);
 
-        // 处理 null
         browseUsers = browseUsers == null ? 0L : browseUsers;
         cartUsers = cartUsers == null ? 0L : cartUsers;
         orderUsers = orderUsers == null ? 0L : orderUsers;
         payUsers = payUsers == null ? 0L : payUsers;
 
-        // 构建漏斗数据
         List<Map<String, Object>> steps = new ArrayList<>();
         double base = browseUsers > 0 ? browseUsers : 1;
         steps.add(Map.of("name", "浏览商品", "count", browseUsers, "rate", 100.0));
@@ -243,26 +255,26 @@ public class AdminStatisticsController {
         result.put("steps", steps);
         return Result.success(result);
     }
+
     @GetMapping("/rfm-analysis")
-    public Result<Map<String, Object>> getRfmAnalysis() {
-        // 1. 获取所有用户的基本订单统计（仅考虑已完成/已支付订单，状态1,2,3）
-        String sql = "SELECT " +
-                "    u.id as userId, " +
-                "    u.username, " +
-                "    MAX(o.create_time) as lastOrderTime, " +
-                "    COUNT(o.id) as orderCount, " +
-                "    COALESCE(SUM(o.total_amount), 0) as totalAmount " +
+    public Result<Map<String, Object>> getRfmAnalysis(
+            @RequestParam(name = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        if (startDate == null) startDate = LocalDate.now().minusDays(90);
+        if (endDate == null) endDate = LocalDate.now();
+
+        String sql = "SELECT u.id as userId, u.username, MAX(o.create_time) as lastOrderTime, " +
+                "COUNT(o.id) as orderCount, COALESCE(SUM(o.total_amount), 0) as totalAmount " +
                 "FROM tb_user u " +
                 "LEFT JOIN tb_order o ON u.id = o.user_id AND o.status IN (1,2,3) " +
+                "AND DATE(o.create_time) BETWEEN ? AND ? " +
                 "GROUP BY u.id, u.username";
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, startDate, endDate);
 
-        // 计算最大值用于归一化评分
-        long maxRecency = 0; // 最大R值（离今天最远的天数）
+        long maxRecency = 0;
         int maxFrequency = 0;
         BigDecimal maxMonetary = BigDecimal.ZERO;
 
-        // 先收集数据并计算最大值
         List<UserRfm> userList = new ArrayList<>();
         LocalDate today = LocalDate.now();
         for (Map<String, Object> row : rows) {
@@ -273,7 +285,7 @@ public class AdminStatisticsController {
             BigDecimal totalAmount = row.get("totalAmount") != null ? (BigDecimal) row.get("totalAmount") : BigDecimal.ZERO;
 
             long recency = (lastOrderTime == null) ? 365 : today.toEpochDay() - lastOrderTime.toLocalDate().toEpochDay();
-            recency = Math.max(0, recency); // 确保非负
+            recency = Math.max(0, recency);
 
             userList.add(new UserRfm(userId, username, recency, orderCount.intValue(), totalAmount));
 
@@ -282,7 +294,6 @@ public class AdminStatisticsController {
             if (totalAmount.compareTo(maxMonetary) > 0) maxMonetary = totalAmount;
         }
 
-        // 归一化并评分（1~5分，分数越高越好，注意R是反向：天数越少分数越高）
         List<Map<String, Object>> result = new ArrayList<>();
         for (UserRfm u : userList) {
             int rScore = maxRecency == 0 ? 5 : (int) Math.round(5 * (1 - (double) u.recency / maxRecency));
@@ -307,7 +318,6 @@ public class AdminStatisticsController {
             result.add(item);
         }
 
-        // 统计各分层用户数
         Map<String, Long> segmentCount = result.stream()
                 .collect(Collectors.groupingBy(m -> (String) m.get("segment"), Collectors.counting()));
 
@@ -317,7 +327,6 @@ public class AdminStatisticsController {
         return Result.success(finalResult);
     }
 
-    // 辅助类
     private static class UserRfm {
         Long userId; String username; long recency; int frequency; BigDecimal monetary;
         UserRfm(Long userId, String username, long recency, int frequency, BigDecimal monetary) {
@@ -326,7 +335,6 @@ public class AdminStatisticsController {
         }
     }
 
-    // 根据R、F、M评分确定用户分层（规则可自定义）
     private String getSegment(int r, int f, int m) {
         if (r >= 4 && f >= 4 && m >= 4) return "高价值用户";
         if (r >= 3 && f >= 3 && m >= 3) return "忠诚用户";
@@ -339,20 +347,22 @@ public class AdminStatisticsController {
         return "一般用户";
     }
 
-
-
+    // ==================== 销量预测接口 ====================
     @GetMapping("/sales-prediction")
     public Result<Map<String, Object>> getSalesPrediction(
             @RequestParam(name = "productId", required = false) Long productId,
             @RequestParam(name = "historicalDays", defaultValue = "30") int historicalDays,
-            @RequestParam(name = "predictDays", defaultValue = "7") int predictDays) {
+            @RequestParam(name = "predictDays", defaultValue = "7") int predictDays,
+            @RequestParam(name = "method", defaultValue = "simple") String method) {
 
         if (productId == null) {
             productId = jdbcTemplate.queryForObject(
                     "SELECT product_id FROM hot_products ORDER BY cnt DESC LIMIT 1", Long.class);
         }
 
-        // 获取历史销量
+        String productName = jdbcTemplate.queryForObject(
+                "SELECT name FROM tb_product WHERE id = ?", String.class, productId);
+
         String sql = "SELECT DATE(o.create_time) as date, SUM(oi.quantity) as quantity " +
                 "FROM tb_order o " +
                 "JOIN tb_order_item oi ON o.id = oi.order_id " +
@@ -370,20 +380,29 @@ public class AdminStatisticsController {
             sales.add(qty);
         }
 
-        // 移动平均预测
-        int window = 7;
-        List<Double> predictedSales = new ArrayList<>();
-        for (int i = 0; i < predictDays; i++) {
-            int start = Math.max(0, sales.size() - window);
-            double sum = 0;
-            int count = 0;
-            for (int j = start; j < sales.size(); j++) {
-                sum += sales.get(j);
-                count++;
+        boolean isMock = false;
+        if (sales.isEmpty()) {
+            isMock = true;
+            LocalDate today = LocalDate.now();
+            for (int i = historicalDays; i > 0; i--) {
+                LocalDate date = today.minusDays(i);
+                double simulatedQty = 5 + Math.random() * 25;
+                historical.add(Map.of("date", date.toString(), "quantity", simulatedQty));
+                sales.add(simulatedQty);
             }
-            double avg = count > 0 ? sum / count : 0;
-            predictedSales.add(avg);
-            sales.add(avg);
+        }
+
+        // 根据方法预测
+        List<Double> predictedSales;
+        switch (method.toLowerCase()) {
+            case "weighted":
+                predictedSales = weightedMovingAverage(new ArrayList<>(sales), predictDays);
+                break;
+            case "exponential":
+                predictedSales = exponentialSmoothing(new ArrayList<>(sales), predictDays);
+                break;
+            default:
+                predictedSales = simpleMovingAverage(new ArrayList<>(sales), predictDays);
         }
 
         List<Map<String, Object>> predicted = new ArrayList<>();
@@ -393,14 +412,13 @@ public class AdminStatisticsController {
             predicted.add(Map.of("date", futureDate, "quantity", predictedSales.get(i)));
         }
 
-        String productName = jdbcTemplate.queryForObject(
-                "SELECT name FROM tb_product WHERE id = ?", String.class, productId);
-
-        // 模拟 AI 分析文本
-        String aiAdvice = "基于过去30天销售数据的移动平均预测，未来7天该商品销量预计将在 "
-                + String.format("%.0f", predictedSales.get(0)) + " 到 "
-                + String.format("%.0f", predictedSales.get(predictedSales.size()-1))
-                + " 之间波动。建议保持当前库存策略。";
+        String aiAdvice;
+        if (isMock) {
+            aiAdvice = "⚠️ 当前暂无真实历史销量数据，图表为随机生成的模拟曲线（仅用于预览）。请确保最近30天有订单产生，或手动插入测试订单数据。";
+        } else {
+            aiAdvice = String.format("基于过去%d天销售数据，使用%s算法预测，未来%d天销量预计将在 %.0f 到 %.0f 之间波动。建议保持当前库存策略。",
+                    historicalDays, getMethodName(method), predictDays, predictedSales.get(0), predictedSales.get(predictedSales.size()-1));
+        }
 
         Map<String, Object> result = new HashMap<>();
         result.put("productId", productId);
@@ -410,4 +428,125 @@ public class AdminStatisticsController {
         result.put("aiAdvice", aiAdvice);
         return Result.success(result);
     }
+
+    // 简单移动平均
+    private List<Double> simpleMovingAverage(List<Double> sales, int predictDays) {
+        List<Double> predictions = new ArrayList<>();
+        int window = 7;
+        for (int i = 0; i < predictDays; i++) {
+            int start = Math.max(0, sales.size() - window);
+            double sum = 0;
+            int count = 0;
+            for (int j = start; j < sales.size(); j++) {
+                sum += sales.get(j);
+                count++;
+            }
+            double avg = count > 0 ? sum / count : 0;
+            predictions.add(avg);
+            sales.add(avg);
+        }
+        return predictions;
     }
+
+    // 加权移动平均（近7天，权重线性递增）
+    private List<Double> weightedMovingAverage(List<Double> sales, int predictDays) {
+        List<Double> predictions = new ArrayList<>();
+        int window = 7;
+        double[] weights = {1, 2, 3, 4, 5, 6, 7};
+        double weightSum = 28;
+        for (int i = 0; i < predictDays; i++) {
+            int start = Math.max(0, sales.size() - window);
+            double sum = 0;
+            int count = 0;
+            for (int j = start; j < sales.size(); j++) {
+                int idx = j - start;
+                sum += sales.get(j) * weights[idx];
+                count++;
+            }
+            double wma = count > 0 ? sum / weightSum : 0;
+            predictions.add(wma);
+            sales.add(wma);
+        }
+        return predictions;
+    }
+
+    // 指数平滑（单指数平滑，α=0.3）
+    private List<Double> exponentialSmoothing(List<Double> sales, int predictDays) {
+        List<Double> predictions = new ArrayList<>();
+        double alpha = 0.3;
+        double lastSmoothed = sales.isEmpty() ? 0 : sales.get(0);
+        for (int i = 1; i < sales.size(); i++) {
+            lastSmoothed = alpha * sales.get(i) + (1 - alpha) * lastSmoothed;
+        }
+        for (int i = 0; i < predictDays; i++) {
+            predictions.add(lastSmoothed);
+            sales.add(lastSmoothed);
+        }
+        return predictions;
+    }
+
+    private String getMethodName(String method) {
+        switch (method) {
+            case "weighted": return "加权移动平均";
+            case "exponential": return "指数平滑";
+            default: return "简单移动平均";
+        }
+    }
+    @GetMapping("/products/by-category")
+    public Result<List<Map<String, Object>>> getProductsByCategory(
+            @RequestParam(name = "categoryId", required = false) Long categoryId) {
+        String sql;
+        List<Long> categoryIds;
+        if (categoryId != null) {
+            categoryIds = getAllSubCategoryIds(categoryId);
+            if (categoryIds.isEmpty()) {
+                return Result.success(List.of());
+            }
+            String placeholders = String.join(",", Collections.nCopies(categoryIds.size(), "?"));
+            sql = "SELECT id, name FROM tb_product WHERE status = 1 AND category_id IN (" + placeholders + ") ORDER BY name";
+            return Result.success(jdbcTemplate.queryForList(sql, categoryIds.toArray()));
+        } else {
+            sql = "SELECT id, name FROM tb_product WHERE status = 1 ORDER BY name LIMIT 200";
+            return Result.success(jdbcTemplate.queryForList(sql));
+        }
+    }
+
+    private List<Long> getAllSubCategoryIds(Long parentId) {
+        return categoryService.getAllSubCategoryIds(parentId);
+    }
+
+    @GetMapping("/product-sales-trend/{productId}")
+    public Result<List<Map<String, Object>>> getProductSalesTrend(
+            @PathVariable("productId") Long productId,
+            @RequestParam(name = "days", defaultValue = "30") int days) {
+
+        String sql = "SELECT DATE(o.create_time) as date, SUM(oi.quantity) as quantity " +
+                "FROM tb_order o " +
+                "JOIN tb_order_item oi ON o.id = oi.order_id " +
+                "WHERE oi.product_id = ? AND o.status IN (1,2,3) " +
+                "AND o.create_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY) " +
+                "GROUP BY DATE(o.create_time) ORDER BY date ASC";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, productId, days);
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        LocalDate startDate = LocalDate.now().minusDays(days - 1);
+        LocalDate endDate = LocalDate.now();
+
+        Map<String, Integer> salesMap = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            String date = row.get("date").toString();
+            Integer qty = ((Number) row.get("quantity")).intValue();
+            salesMap.put(date, qty);
+        }
+
+        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
+            String dateStr = date.toString();
+            int qty = salesMap.getOrDefault(dateStr, 0);
+            result.add(Map.of("date", dateStr, "quantity", qty));
+        }
+
+        return Result.success(result);
+    }
+
+
+}

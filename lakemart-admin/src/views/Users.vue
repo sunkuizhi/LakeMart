@@ -4,7 +4,10 @@
       <template #header>
         <div class="flex-between">
           <span>用户管理</span>
-          <el-button @click="fetchData">刷新</el-button>
+          <div>
+            <el-button type="success" @click="exportUsers" :loading="exportLoading">导出 Excel</el-button>
+            <el-button @click="fetchData">刷新</el-button>
+          </div>
         </div>
       </template>
 
@@ -118,6 +121,7 @@ const tableData = ref([])
 const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
+const exportLoading = ref(false)
 
 const searchForm = reactive({
   username: '',
@@ -260,6 +264,37 @@ const submitAdjustPoints = async () => {
     ElMessage.error('请求失败')
   } finally {
     pointsLoading.value = false
+  }
+}
+
+// 导出用户列表
+const exportUsers = async () => {
+  exportLoading.value = true
+  try {
+    const params = {
+      username: searchForm.username || undefined,
+      email: searchForm.email || undefined,
+      status: searchForm.status
+    }
+    const response = await axios.post('/api/admin/user/export', params, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      responseType: 'blob'
+    })
+    const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `users_${new Date().getTime()}.xlsx`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('导出失败，请稍后重试')
+  } finally {
+    exportLoading.value = false
   }
 }
 
