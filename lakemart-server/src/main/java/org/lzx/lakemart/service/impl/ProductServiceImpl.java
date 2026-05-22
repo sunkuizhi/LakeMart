@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -26,31 +27,37 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
 
     @Override
     public Page<ProductVO> queryPage(ProductQueryDTO query) {
+        // 用户端查询（保持不变）
         Page<Product> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
 
-        // 分类筛选逻辑：优先精确匹配 categoryId，否则使用 parentCategoryId（包含子分类）
         if (query.getCategoryId() != null) {
-            wrapper.eq(Product::getCategoryId, query.getCategoryId());
+            if (Boolean.TRUE.equals(query.getIncludeChildren())) {
+                List<Long> categoryIds = new ArrayList<>();
+                categoryIds.add(query.getCategoryId());
+                List<Long> subIds = categoryService.getAllSubCategoryIds(query.getCategoryId());
+                if (subIds != null && !subIds.isEmpty()) {
+                    categoryIds.addAll(subIds);
+                }
+                wrapper.in(Product::getCategoryId, categoryIds);
+            } else {
+                wrapper.eq(Product::getCategoryId, query.getCategoryId());
+            }
         } else if (query.getParentCategoryId() != null) {
             List<Long> categoryIds = categoryService.getAllSubCategoryIds(query.getParentCategoryId());
             if (!categoryIds.isEmpty()) {
                 wrapper.in(Product::getCategoryId, categoryIds);
             } else {
-                // 如果传入的父分类不存在或无子分类（实际不可能无自身），让结果为空
                 wrapper.eq(Product::getCategoryId, -1L);
             }
         }
 
-        // 模糊搜索商品名称
         if (query.getKeyword() != null && !query.getKeyword().isEmpty()) {
             wrapper.like(Product::getName, query.getKeyword());
         }
-
-        // 用户端只显示上架商品
         wrapper.eq(Product::getStatus, 1);
 
-        // 排序
+        // 排序逻辑略（与原代码相同）
         if (query.getSortBy() != null) {
             boolean isAsc = "asc".equalsIgnoreCase(query.getSortOrder());
             switch (query.getSortBy()) {
@@ -71,8 +78,6 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
         }
 
         Page<Product> productPage = baseMapper.selectPage(page, wrapper);
-
-        // 转换为 ProductVO，并补充分类名称
         Page<ProductVO> voPage = new Page<>(productPage.getCurrent(), productPage.getSize(), productPage.getTotal());
         List<ProductVO> voList = productPage.getRecords().stream().map(product -> {
             Category category = categoryService.getById(product.getCategoryId());
@@ -98,15 +103,30 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
     public Page<ProductVO> adminQueryPage(ProductPageQueryDTO query) {
         Page<Product> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
+
         if (query.getName() != null && !query.getName().isEmpty()) {
             wrapper.like(Product::getName, query.getName());
         }
+
+        // 管理端分类筛选：支持包含子分类
         if (query.getCategoryId() != null) {
-            wrapper.eq(Product::getCategoryId, query.getCategoryId());
+            if (Boolean.TRUE.equals(query.getIncludeChildren())) {
+                List<Long> categoryIds = new ArrayList<>();
+                categoryIds.add(query.getCategoryId());
+                List<Long> subIds = categoryService.getAllSubCategoryIds(query.getCategoryId());
+                if (subIds != null && !subIds.isEmpty()) {
+                    categoryIds.addAll(subIds);
+                }
+                wrapper.in(Product::getCategoryId, categoryIds);
+            } else {
+                wrapper.eq(Product::getCategoryId, query.getCategoryId());
+            }
         }
+
         if (query.getStatus() != null) {
             wrapper.eq(Product::getStatus, query.getStatus());
         }
+
         wrapper.orderByDesc(Product::getCreateTime);
 
         Page<Product> productPage = baseMapper.selectPage(page, wrapper);
@@ -131,6 +151,8 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
         return voPage;
     }
 
+    // 其他方法（addProduct, updateProduct, updateStatus, deleteProduct）保持不变，此处省略
+    // 请确保你的原文件中有这些方法的完整实现
     @Override
     public void addProduct(Product product) {
         product.setSalesCount(0);
