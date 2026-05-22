@@ -31,7 +31,8 @@ const router = createRouter({
         { path: 'profile', name: 'profile', component: () => import('../views/Profile.vue') },
         { path: 'banner', name: 'banner', component: () => import('../views/Banner.vue'), meta: { requiresAuth: true } },
         { path: 'profile', name: 'profile', component: () => import('../views/Profile.vue'), meta: { requiresAuth: true } },
-        {         path: '/sales-forecast',
+        {
+          path: '/sales-forecast',
           name: 'SalesForecast',
           component: () => import('@/views/SalesForecast.vue'),
           meta: { title: '销量预测', requiresAuth: true, role: 'admin' }
@@ -41,14 +42,15 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach((to, from, next) => {
+// 修改后的导航守卫：直接返回路由路径或 true，不再使用 next 回调
+router.beforeEach((to, from) => {
   const token = localStorage.getItem('token')
   if (to.meta.requiresAuth && !token) {
-    next('/login')
+    return '/login'
   } else if (to.path === '/login' && token) {
-    next('/dashboard')
+    return '/dashboard'
   } else {
-    next()
+    return true
   }
 })
 

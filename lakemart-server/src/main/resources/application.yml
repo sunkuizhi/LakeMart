@@ -22,11 +22,13 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
   ai:
-    openai:
-      api-key: ${OPENAI_API_KEY}
+    zhipuai:
+      zhipu:
+        api-key: cb7268f94330442bac35de280f048a92.aP3qOBQQjbDzjdKm   # 不设默认值，强调查询环境变量
       chat:
         options:
-          model: gpt-3.5-turbo
+          model: glm-4-flash       # 免费模型，可根据需要切换为 glm-4.7-flash
+          temperature: 0.7
   mail:
     host: smtp.qq.com
     port: 587
@@ -59,3 +61,7 @@ jwt:
 temp:
   file:
     path: ${TEMP_FILE_PATH:./temp}
+
+logging:
+  level:
+    org.lzx.lakemart.service.AiAnalysisService: DEBUG

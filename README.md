@@ -130,7 +130,7 @@ docker-compose up -d
 
 ### 默认账号
 
-- 管理员：邮箱 `admin2@example.com`，密码 `12345678`（需先注册后手动将数据库 `tb_user.role` 改为 `ROLE_ADMIN`）
+- 管理员：邮箱 `admin@qq.com`，密码 `12345678`
 - 或注册新用户后，在数据库中修改角色
 
 > 说明：所有服务数据均通过 Docker 卷持久化（`mysql-data/`、`redis-data/`、`minio-data/`），重启不丢失。
@@ -191,9 +191,17 @@ LakeMart/
 
 #### 数据仪表盘（大数据分析核心）
 
-![仪表盘概览](./screenshots/管理端仪表盘1.png)
-![仪表盘概览](./screenshots/管理端仪表盘2.png)
-![仪表盘大数据模块（漏斗/RFM/预测）](./screenshots/管理端仪表盘3.png)
+| 销售趋势 | 商品分析 |
+|----------|----------|
+| ![销售趋势](./screenshots/管理端仪表盘-销售趋势.png) | ![商品分析](./screenshots/管理端仪表盘-商品分析.png) |
+
+| 用户分析 | 实时监控 |
+|----------|----------|
+| ![用户分析](./screenshots/管理端仪表盘-用户分析.png) | ![实时监控](./screenshots/管理端仪表盘-实时分析.png) |
+
+| 销量预测（AI 分析） |
+|--------------------|
+| ![销量预测](./screenshots/管理端-销量预测（已接入AI）.png) |
 
 #### 基础管理功能
 
@@ -215,7 +223,6 @@ LakeMart/
 | 购物车操作（增删改） | ![购物车操作](./screenshots/用户端-购物车操作.png) |
 | 我的订单 | ![我的订单](./screenshots/用户端-我的订单.png) |
 | 个人中心 | ![个人中心](./screenshots/用户端-个人中心.png) |
-
 ## 🤝 贡献指南
 
 欢迎提交 Issue 和 Pull Request。请确保代码风格统一，并遵循现有目录结构。

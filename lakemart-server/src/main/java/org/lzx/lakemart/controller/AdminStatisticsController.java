@@ -4,6 +4,7 @@ import org.lzx.lakemart.model.dto.OrderStatisticsDTO;
 import org.lzx.lakemart.model.vo.DailyAmountVO;
 import org.lzx.lakemart.model.vo.ProductSalesVO;
 import org.lzx.lakemart.result.Result;
+import org.lzx.lakemart.service.AiAnalysisService;
 import org.lzx.lakemart.service.CategoryService;
 import org.lzx.lakemart.service.OrderService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +12,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -27,9 +29,10 @@ public class AdminStatisticsController {
     private OrderService orderService;
     @Autowired
     private CategoryService categoryService;
-
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    @Autowired
+    private AiAnalysisService aiAnalysisService;
 
     // ==================== 原有接口 ====================
     @GetMapping("/order/daily")
@@ -102,7 +105,6 @@ public class AdminStatisticsController {
             rows = new ArrayList<>();
         }
 
-        // 标准化行为名称
         Map<String, Integer> merged = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {
             String action = (String) row.get("action");
@@ -161,7 +163,7 @@ public class AdminStatisticsController {
         return Result.success(data);
     }
 
-    // ==================== 新增实时模拟接口 ====================
+    // ==================== 实时模拟接口 ====================
     @PostMapping("/behavior/simulate")
     public Result<Map<String, Object>> simulateRealTimeBehavior() {
         String[] actions = {"浏览商品", "加入购物车", "生成订单", "支付成功", "搜索"};
@@ -347,7 +349,7 @@ public class AdminStatisticsController {
         return "一般用户";
     }
 
-    // ==================== 销量预测接口 ====================
+    // ==================== 销量预测接口（增强版） ====================
     @GetMapping("/sales-prediction")
     public Result<Map<String, Object>> getSalesPrediction(
             @RequestParam(name = "productId", required = false) Long productId,
@@ -392,7 +394,7 @@ public class AdminStatisticsController {
             }
         }
 
-        // 根据方法预测
+        // 预测
         List<Double> predictedSales;
         switch (method.toLowerCase()) {
             case "weighted":
@@ -412,12 +414,27 @@ public class AdminStatisticsController {
             predicted.add(Map.of("date", futureDate, "quantity", predictedSales.get(i)));
         }
 
+        // 计算历史统计指标
+        double totalSales = sales.stream().mapToDouble(Double::doubleValue).sum();
+        double avgSales = sales.isEmpty() ? 0 : totalSales / sales.size();
+        double maxSales = sales.stream().mapToDouble(Double::doubleValue).max().orElse(0);
+        int recentSize = Math.min(7, sales.size());
+        double recentAvg = 0;
+        if (recentSize > 0) {
+            recentAvg = sales.subList(sales.size() - recentSize, sales.size()).stream()
+                    .mapToDouble(Double::doubleValue).average().orElse(0);
+        }
+        String recentTrend = recentAvg > avgSales ? "上升" : (recentAvg < avgSales ? "下降" : "平稳");
+
         String aiAdvice;
         if (isMock) {
             aiAdvice = "⚠️ 当前暂无真实历史销量数据，图表为随机生成的模拟曲线（仅用于预览）。请确保最近30天有订单产生，或手动插入测试订单数据。";
         } else {
-            aiAdvice = String.format("基于过去%d天销售数据，使用%s算法预测，未来%d天销量预计将在 %.0f 到 %.0f 之间波动。建议保持当前库存策略。",
-                    historicalDays, getMethodName(method), predictDays, predictedSales.get(0), predictedSales.get(predictedSales.size()-1));
+            double firstPred = predictedSales.get(0);
+            double lastPred = predictedSales.get(predictedSales.size() - 1);
+            // 调用 AI 服务生成建议（传入统计指标）
+            aiAdvice = aiAnalysisService.generateAdvice(productName, historicalDays, method,
+                    firstPred, lastPred, totalSales, avgSales, maxSales, recentTrend);
         }
 
         Map<String, Object> result = new HashMap<>();
@@ -426,6 +443,11 @@ public class AdminStatisticsController {
         result.put("historical", historical);
         result.put("predicted", predicted);
         result.put("aiAdvice", aiAdvice);
+        // 返回统计指标供前端展示
+        result.put("totalSales", totalSales);
+        result.put("avgSales", avgSales);
+        result.put("maxSales", maxSales);
+        result.put("recentTrend", recentTrend);
         return Result.success(result);
     }
 
@@ -492,6 +514,7 @@ public class AdminStatisticsController {
             default: return "简单移动平均";
         }
     }
+
     @GetMapping("/products/by-category")
     public Result<List<Map<String, Object>>> getProductsByCategory(
             @RequestParam(name = "categoryId", required = false) Long categoryId) {
@@ -548,5 +571,20 @@ public class AdminStatisticsController {
         return Result.success(result);
     }
 
-
+    // ==================== AI 建议接口（兼容旧版，增加可选统计参数） ====================
+    @GetMapping("/ai-advice")
+    public Result<String> getAiAdvice(@RequestParam("productName") String productName,
+                                      @RequestParam("historicalDays") int historicalDays,
+                                      @RequestParam("method") String method,
+                                      @RequestParam("firstPrediction") double firstPrediction,
+                                      @RequestParam("lastPrediction") double lastPrediction,
+                                      @RequestParam(value = "totalSales", required = false) Double totalSales,
+                                      @RequestParam(value = "avgSales", required = false) Double avgSales,
+                                      @RequestParam(value = "maxSales", required = false) Double maxSales,
+                                      @RequestParam(value = "recentTrend", required = false) String recentTrend) {
+        String advice = aiAnalysisService.generateAdvice(productName, historicalDays, method,
+                firstPrediction, lastPrediction,
+                totalSales, avgSales, maxSales, recentTrend);
+        return Result.successData(advice);
+    }
 }
