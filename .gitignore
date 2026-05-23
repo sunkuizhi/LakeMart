@@ -95,6 +95,7 @@ temp/
 *.bak
 *.orig
 *.sql
+!sql/*.sql
 
 # 前端本地环境变量（具体文件）
 **/.env.development
