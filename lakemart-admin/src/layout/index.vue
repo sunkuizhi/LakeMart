@@ -26,6 +26,10 @@
           <el-icon><User /></el-icon>
           <span>用户管理</span>
         </el-menu-item>
+        <el-menu-item index="/user-profile">
+          <el-icon><User /></el-icon>
+          <span>用户画像</span>
+        </el-menu-item>
         <el-menu-item index="/categories">
           <el-icon><Folder /></el-icon>
           <span>分类管理</span>

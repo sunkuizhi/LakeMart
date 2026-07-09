@@ -31,7 +31,6 @@
           @keyup.enter="handleSearch"
           style="width: 200px"
         />
-        <!-- 分类级联选择器（支持任意层级） -->
         <el-cascader
           v-model="selectedCategoryId"
           :options="categoryTree"
@@ -56,7 +55,7 @@
       </div>
     </div>
 
-    <!-- 商品网格 -->
+    <!-- 热门商品网格 -->
     <div class="product-grid">
       <el-card
         v-for="product in productList"
@@ -77,7 +76,7 @@
       </el-card>
     </div>
 
-    <!-- 分页 -->
+    <!-- 分页（紧跟在热门商品之后） -->
     <el-pagination
       v-model:current-page="pageNum"
       v-model:page-size="pageSize"
@@ -88,6 +87,30 @@
       @current-change="fetchData"
       class="pagination"
     />
+
+    <!-- 猜你喜欢 -->
+    <div class="recommend-section" v-if="recommendProducts.length">
+      <h2>猜你喜欢</h2>
+      <div class="product-grid">
+        <el-card
+          v-for="product in recommendProducts"
+          :key="product.id"
+          class="product-card"
+          shadow="hover"
+          body-style="{ padding: '12px' }"
+          @click="goToDetail(product.id)"
+        >
+          <img :src="product.imageUrl || `https://picsum.photos/200/200?random=${product.id}`" class="product-image" />
+          <div class="product-info">
+            <div class="product-name">{{ product.name }}</div>
+            <div class="product-price">¥{{ product.price.toFixed(2) }}</div>
+            <div class="product-actions">
+              <el-button type="primary" size="small" plain @click.stop="addToCart(product.id)">加入购物车</el-button>
+            </div>
+          </div>
+        </el-card>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -116,11 +139,15 @@ const pageNum = ref(1)
 const pageSize = ref(12)
 const total = ref(0)
 const searchKeyword = ref('')
-const selectedCategoryId = ref<number | null>(null)   // 选中的分类ID
+const selectedCategoryId = ref<number | null>(null)
 const sortType = ref('')
-const categoryTree = ref<any[]>([])    // 分类树（用于级联选择器）
+const categoryTree = ref<any[]>([])
 const banners = ref<any[]>([])
-const categories = ref<any[]>([])      // 前8个一级分类（用于图标入口）
+const categories = ref<any[]>([])
+const recommendProducts = ref<any[]>([])
+
+// 模拟数据开关：true = 强制显示假数据（立即看到效果），false = 使用后端真实接口
+const USE_MOCK_RECOMMEND = true
 
 // 级联选择器配置
 const cascaderProps = {
@@ -128,8 +155,8 @@ const cascaderProps = {
   label: 'name',
   children: 'children',
   expandTrigger: 'hover',
-  checkStrictly: true,    // 允许选中任意层级
-  emitPath: false         // 只返回选中的ID，不返回路径数组
+  checkStrictly: true,
+  emitPath: false
 }
 
 // 根据分类名称返回对应的图标组件对象
@@ -166,7 +193,6 @@ const fetchCategoryTree = async () => {
     const res = await getCategoryTree()
     if (res.data.code === 0) {
       categoryTree.value = res.data.data
-      // 取前8个一级分类作为图标入口
       categories.value = res.data.data.slice(0, 8)
     }
   } catch (error) {
@@ -174,7 +200,7 @@ const fetchCategoryTree = async () => {
   }
 }
 
-// 商品列表查询（包含子分类）
+// 获取热门商品列表（包含子分类）
 const fetchData = async () => {
   try {
     const params: any = {
@@ -182,7 +208,7 @@ const fetchData = async () => {
       pageSize: pageSize.value,
       keyword: searchKeyword.value || undefined,
       categoryId: selectedCategoryId.value || undefined,
-      includeChildren: true   // 关键：告诉后端需要包含子分类下的商品
+      includeChildren: true
     }
     if (sortType.value) {
       const [field, order] = sortType.value.split('_')
@@ -202,32 +228,61 @@ const fetchData = async () => {
   }
 }
 
-// 搜索（重置页码）
+// 获取个性化推荐（猜你喜欢）
+const fetchRecommend = async () => {
+  // 模拟数据模式：直接显示测试商品（确保区块出现）
+  if (USE_MOCK_RECOMMEND) {
+    recommendProducts.value = [
+      { id: 1, name: 'Apple iPhone 15 Pro Max', price: 9999.00, imageUrl: 'https://picsum.photos/id/1/200/200' },
+      { id: 2, name: '华为Mate 60 Pro', price: 6999.00, imageUrl: 'https://picsum.photos/id/2/200/200' },
+      { id: 3, name: '小米14 Ultra', price: 6499.00, imageUrl: 'https://picsum.photos/id/3/200/200' },
+      { id: 74, name: '索尼WH-1000XM5耳机', price: 2499.00, imageUrl: 'https://picsum.photos/id/74/200/200' },
+      { id: 235, name: '戴森V15吸尘器', price: 4999.00, imageUrl: 'https://picsum.photos/id/235/200/200' },
+    ]
+    return
+  }
+
+  // 真实接口模式（原有逻辑）
+  const token = localStorage.getItem('token')
+  if (!token) {
+    console.warn('未登录，不显示推荐')
+    return
+  }
+  try {
+    const res = await axios.get('/api/user/recommend', {
+      params: { limit: 12 },
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (res.data.code === 0) {
+      recommendProducts.value = res.data.data
+    } else {
+      console.error('推荐接口返回错误', res.data.message)
+    }
+  } catch (error) {
+    console.error('获取推荐失败', error)
+  }
+}
+
 const handleSearch = () => {
   pageNum.value = 1
   fetchData()
 }
 
-// 级联选择器变化
 const handleCategoryChange = (value: number | null) => {
   selectedCategoryId.value = value
   handleSearch()
 }
 
-// 点击图标入口：设置分类ID并滚动到筛选栏
 const goToCategory = (id: number) => {
   selectedCategoryId.value = id
   handleSearch()
-  // 滚动到商品列表头部
   document.querySelector('.product-header')?.scrollIntoView({ behavior: 'smooth' })
 }
 
-// 商品详情
 const goToDetail = (id: number) => {
   router.push(`/product/${id}`)
 }
 
-// 加入购物车
 const addToCart = async (productId: number) => {
   const token = localStorage.getItem('token')
   if (!token) {
@@ -254,6 +309,7 @@ onMounted(() => {
   fetchBanners()
   fetchCategoryTree()
   fetchData()
+  fetchRecommend()
 })
 </script>
 
@@ -384,6 +440,7 @@ onMounted(() => {
 // 分页
 .pagination {
   margin-top: 20px;
+  margin-bottom: 40px;
   display: flex;
   justify-content: center;
 }

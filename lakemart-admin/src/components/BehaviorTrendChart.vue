@@ -5,12 +5,6 @@
         <span>实时行为趋势（最近60分钟）</span>
         <div>
           <el-button type="primary" link @click="refreshData">刷新</el-button>
-          <el-switch
-            v-model="autoSimulate"
-            active-text="模拟实时"
-            @change="toggleSimulate"
-            style="margin-left: 10px;"
-          />
         </div>
       </div>
     </template>
@@ -19,7 +13,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
@@ -52,9 +46,6 @@ const option = ref({
   dataZoom: [{ type: 'inside', start: 0, end: 100 }]
 })
 
-const autoSimulate = ref(false)
-let timer = null
-
 const fetchData = async () => {
   const token = localStorage.getItem('token')
   if (!token) return
@@ -74,47 +65,12 @@ const fetchData = async () => {
   }
 }
 
-const simulateOneStep = async () => {
-  const token = localStorage.getItem('token')
-  if (!token) return
-  try {
-    const res = await axios.post('/api/admin/statistics/behavior/simulate', {}, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    if (res.data.code === 0) {
-      const trend = res.data.data.trend
-      option.value.xAxis.data = trend.map(item => item.minute)
-      option.value.series[0].data = trend.map(item => item.cnt)
-      // 可选：在控制台看到模拟的动作
-      console.log(`[模拟] 新增行为: ${res.data.data.lastAction}`)
-    }
-  } catch (error) {
-    console.error('模拟失败', error)
-  }
-}
-
-const toggleSimulate = (val) => {
-  if (val) {
-    if (timer) clearInterval(timer)
-    timer = setInterval(() => {
-      simulateOneStep()
-    }, 5000) // 每5秒模拟一条新行为
-  } else {
-    if (timer) clearInterval(timer)
-    timer = null
-  }
-}
-
 const refreshData = () => {
   fetchData()
 }
 
 onMounted(() => {
   fetchData()
-})
-
-onUnmounted(() => {
-  if (timer) clearInterval(timer)
 })
 </script>
 

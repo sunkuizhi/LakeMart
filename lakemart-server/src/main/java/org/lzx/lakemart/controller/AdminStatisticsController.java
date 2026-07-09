@@ -1,13 +1,18 @@
 package org.lzx.lakemart.controller;
 
 import org.lzx.lakemart.model.dto.OrderStatisticsDTO;
+import org.lzx.lakemart.model.entity.Product;
 import org.lzx.lakemart.model.vo.DailyAmountVO;
+import org.lzx.lakemart.model.vo.HotProductVO;
 import org.lzx.lakemart.model.vo.ProductSalesVO;
 import org.lzx.lakemart.result.Result;
 import org.lzx.lakemart.service.AiAnalysisService;
 import org.lzx.lakemart.service.CategoryService;
 import org.lzx.lakemart.service.OrderService;
+import org.lzx.lakemart.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -19,7 +24,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
-
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 @RestController
 @RequestMapping("/api/admin/statistics")
 @PreAuthorize("hasRole('ADMIN')")
@@ -33,6 +38,10 @@ public class AdminStatisticsController {
     private JdbcTemplate jdbcTemplate;
     @Autowired
     private AiAnalysisService aiAnalysisService;
+    @Autowired
+    private ProductService productService;        // ✅ 新增
+    @Autowired
+    private RedisTemplate<String, String> redisTemplate;  // ✅ 新增
 
     // ==================== 原有接口 ====================
     @GetMapping("/order/daily")
@@ -41,6 +50,26 @@ public class AdminStatisticsController {
             @RequestParam(name = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         List<OrderStatisticsDTO> statistics = orderService.getDailyStatistics(startDate, endDate);
         return Result.success(statistics);
+    }
+    /**
+     * 获取最近 N 条用户行为日志（用于实时监控）
+     */
+    @GetMapping("/behavior/recent")
+    public Result<List<Map<String, Object>>> getRecentBehavior(
+            @RequestParam(name = "limit", defaultValue = "50") int limit) {
+        String sql = "SELECT " +
+                "l.create_time as time, " +
+                "l.user_id as userId, " +
+                "u.username, " +
+                "l.action, " +
+                "l.product_id as productId, " +
+                "p.name as productName " +
+                "FROM user_behavior_log l " +
+                "LEFT JOIN tb_user u ON l.user_id = u.id " +
+                "LEFT JOIN tb_product p ON l.product_id = p.id " +
+                "ORDER BY l.create_time DESC LIMIT ?";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, limit);
+        return Result.success(rows);
     }
 
     @GetMapping("/hot-products")
@@ -180,10 +209,10 @@ public class AdminStatisticsController {
 
     // ==================== 公共方法 ====================
     private List<Map<String, Object>> getBehaviorTrendData(int minutes) {
-        String sql = "SELECT DATE_FORMAT(create_time, '%Y-%m-%d %H:%i') as minute, COUNT(*) as cnt " +
+        String sql = "SELECT DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:00') as minute, COUNT(*) as cnt " +
                 "FROM user_behavior_log " +
                 "WHERE create_time >= DATE_SUB(NOW(), INTERVAL ? MINUTE) " +
-                "GROUP BY DATE_FORMAT(create_time, '%Y%m%d%H%i') " +
+                "GROUP BY DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:00') " +
                 "ORDER BY minute ASC";
         List<Map<String, Object>> rows;
         try {
@@ -191,14 +220,11 @@ public class AdminStatisticsController {
         } catch (Exception e) {
             rows = new ArrayList<>();
         }
-        if (rows.isEmpty()) {
-            rows = generateMockBehaviorTrend(minutes);
-        }
         return rows.stream().map(row -> {
             Map<String, Object> item = new HashMap<>();
             String minuteStr = (String) row.get("minute");
             if (minuteStr != null && minuteStr.length() >= 16) {
-                minuteStr = minuteStr.substring(11, 16);
+                minuteStr = minuteStr.substring(11, 16);  // 提取 HH:mm
             }
             item.put("minute", minuteStr);
             Object cntObj = row.get("cnt");
@@ -570,7 +596,78 @@ public class AdminStatisticsController {
 
         return Result.success(result);
     }
+    /**
+     * 获取用户画像概览统计（分层人数 + 等级人数）
+     */
+    @GetMapping("/user-profile/overview")
+    public Result<Map<String, Object>> getUserProfileOverview() {
+        Map<String, Object> result = new HashMap<>();
 
+        // 统计各分层人数
+        String lifecycleSql = "SELECT lifecycle_stage, COUNT(*) as cnt FROM user_profile GROUP BY lifecycle_stage";
+        List<Map<String, Object>> lifecycleData = jdbcTemplate.queryForList(lifecycleSql);
+        result.put("lifecycle", lifecycleData);
+
+        // 统计各等级人数
+        String levelSql = "SELECT user_level, COUNT(*) as cnt FROM user_profile GROUP BY user_level";
+        List<Map<String, Object>> levelData = jdbcTemplate.queryForList(levelSql);
+        result.put("level", levelData);
+
+        // 总用户数
+        String totalSql = "SELECT COUNT(*) FROM user_profile";
+        Integer total = jdbcTemplate.queryForObject(totalSql, Integer.class);
+        result.put("totalUsers", total != null ? total : 0);
+
+        return Result.success(result);
+    }
+    /**
+     * 分页查询用户画像列表
+     */
+    @GetMapping("/user-profile/list")
+    public Result<Page<Map<String, Object>>> getUserProfileList(
+            @RequestParam(name = "pageNum", defaultValue = "1") int pageNum,
+            @RequestParam(name = "pageSize", defaultValue = "10") int pageSize,
+            @RequestParam(name = "lifecycleStage", required = false) String lifecycleStage,
+            @RequestParam(name = "userLevel", required = false) String userLevel,
+            @RequestParam(name = "keyword", required = false) String keyword) {
+
+        String sql = "SELECT user_id, total_order_count, total_amount, avg_order_amount, " +
+                "max_order_amount, last_order_days, action_count_7d, action_count_30d, " +
+                "active_days_7d, lifecycle_stage, user_level, update_time " +
+                "FROM user_profile WHERE 1=1";
+        StringBuilder where = new StringBuilder();
+        List<Object> params = new ArrayList<>();
+
+        if (lifecycleStage != null && !lifecycleStage.isEmpty()) {
+            where.append(" AND lifecycle_stage = ?");
+            params.add(lifecycleStage);
+        }
+        if (userLevel != null && !userLevel.isEmpty()) {
+            where.append(" AND user_level = ?");
+            params.add(userLevel);
+        }
+        if (keyword != null && !keyword.isEmpty()) {
+            where.append(" AND user_id = ?");
+            try {
+                params.add(Long.valueOf(keyword));
+            } catch (NumberFormatException e) {
+                // 如果keyword不是数字，返回空
+                return Result.success(new Page<>());
+            }
+        }
+
+        String countSql = "SELECT COUNT(*) FROM user_profile" + where;
+        int total = jdbcTemplate.queryForObject(countSql, Integer.class, params.toArray());
+
+        String pageSql = sql + where + " ORDER BY user_id LIMIT ? OFFSET ?";
+        params.add(pageSize);
+        params.add((pageNum - 1) * pageSize);
+        List<Map<String, Object>> records = jdbcTemplate.queryForList(pageSql, params.toArray());
+
+        Page<Map<String, Object>> page = new Page<>(pageNum, pageSize, total);
+        page.setRecords(records);
+        return Result.success(page);
+    }
     // ==================== AI 建议接口（兼容旧版，增加可选统计参数） ====================
     @GetMapping("/ai-advice")
     public Result<String> getAiAdvice(@RequestParam("productName") String productName,
@@ -586,5 +683,60 @@ public class AdminStatisticsController {
                 firstPrediction, lastPrediction,
                 totalSales, avgSales, maxSales, recentTrend);
         return Result.successData(advice);
+    }
+
+    /**
+     * 获取实时热销商品 TOP N
+     * 从 Redis ZSET 读取 hot:products，返回商品信息和热度分数
+     *
+     * @param topN 返回前 N 个商品，默认 10
+     * @return 实时热榜数据
+     */
+    @GetMapping("/realtime-hot-products")
+    public Result<List<HotProductVO>> getRealtimeHotProducts(
+            @RequestParam(name = "topN", defaultValue = "10") int topN) {
+        // 1. 从 Redis ZSET 获取分数最高的 topN 个商品 ID（带分数）
+        Set<ZSetOperations.TypedTuple<String>> typedTuples =
+                redisTemplate.opsForZSet().reverseRangeWithScores("hot:products", 0, topN - 1);
+
+        if (typedTuples == null || typedTuples.isEmpty()) {
+            return Result.success(new ArrayList<>());
+        }
+
+        // 2. 提取商品 ID 列表（保持 Redis 返回的顺序）
+        List<Long> productIds = typedTuples.stream()
+                .map(tuple -> Long.valueOf(tuple.getValue()))
+                .collect(Collectors.toList());
+
+        // 3. 查询商品详细信息
+        List<Product> products = productService.listByIds(productIds);
+        // 构建 productId -> Product 映射，便于快速查找
+        Map<Long, Product> productMap = products.stream()
+                .collect(Collectors.toMap(Product::getId, p -> p));
+
+        // 4. 组装 VO（保持 Redis 的排序顺序）
+        List<HotProductVO> result = new ArrayList<>();
+        for (ZSetOperations.TypedTuple<String> tuple : typedTuples) {
+            Long productId = Long.valueOf(tuple.getValue());
+            Double score = tuple.getScore(); // 热度分数（点击次数）
+
+            Product product = productMap.get(productId);
+            HotProductVO vo = new HotProductVO();
+            vo.setProductId(productId);
+            vo.setHeatScore(score != null ? score.longValue() : 0L);
+
+            if (product != null) {
+                vo.setProductName(product.getName());
+                vo.setPrice(product.getPrice());
+                vo.setImageUrl(product.getImageUrl());
+            } else {
+                vo.setProductName("已下架商品");
+                vo.setPrice(null);
+                vo.setImageUrl(null);
+            }
+            result.add(vo);
+        }
+
+        return Result.success(result);
     }
 }

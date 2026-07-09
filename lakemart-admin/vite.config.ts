@@ -14,7 +14,15 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+      },
+      '/ws': {
+        target: 'http://localhost:8080',   // 用 http
+        ws: true,
+        changeOrigin: true,
       }
     }
+  },
+  define: {
+    global: 'window'
   }
 })

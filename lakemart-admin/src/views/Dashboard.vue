@@ -85,6 +85,11 @@
             <BehaviorTrendChart />
           </el-col>
         </el-row>
+        <el-row :gutter="20" class="chart-row">
+          <el-col :span="24">
+            <RealTimeBehaviorLog />  <!-- 新增的实时行为流 -->
+          </el-col>
+        </el-row>
       </el-tab-pane>
     </el-tabs>
   </div>
@@ -100,6 +105,7 @@ import BehaviorTrendChart from '@/components/BehaviorTrendChart.vue'
 import BehaviorDistributionChart from '@/components/BehaviorDistributionChart.vue'
 import FunnelChart from '@/components/FunnelChart.vue'
 import RfmAnalysis from '@/components/RfmAnalysis.vue'
+import RealTimeBehaviorLog from '@/components/RealTimeBehaviorLog.vue'
 import axios from 'axios'
 
 // 全屏状态

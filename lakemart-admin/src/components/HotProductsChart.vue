@@ -1,101 +1,9 @@
-<!--<template>-->
-<!--  <el-card class="chart-card">-->
-<!--    <template #header>-->
-<!--      <div class="card-header">-->
-<!--        <span>热销商品 TOP 10</span>-->
-<!--      </div>-->
-<!--    </template>-->
-<!--    <v-chart class="chart" :option="option" autoresize />-->
-<!--  </el-card>-->
-<!--</template>-->
-
-<!--<script setup>-->
-<!--import { ref, inject, watch, onMounted } from 'vue'-->
-<!--import { use } from 'echarts/core'-->
-<!--import { CanvasRenderer } from 'echarts/renderers'-->
-<!--import { BarChart } from 'echarts/charts'-->
-<!--import {-->
-<!--  TitleComponent,-->
-<!--  TooltipComponent,-->
-<!--  GridComponent,-->
-<!--  LegendComponent-->
-<!--} from 'echarts/components'-->
-<!--import VChart from 'vue-echarts'-->
-<!--import axios from 'axios'-->
-<!--import { ElMessage } from 'element-plus'-->
-
-<!--use([-->
-<!--  CanvasRenderer,-->
-<!--  BarChart,-->
-<!--  TitleComponent,-->
-<!--  TooltipComponent,-->
-<!--  GridComponent,-->
-<!--  LegendComponent-->
-<!--])-->
-
-<!--// 注入父组件提供的日期范围-->
-<!--const { startDate, endDate } = inject('globalDateRange')-->
-
-<!--const option = ref({-->
-<!--  title: { text: '热销商品排行', left: 'center' },-->
-<!--  tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },-->
-<!--  xAxis: { type: 'category', data: [], axisLabel: { rotate: 30, interval: 0 } },-->
-<!--  yAxis: { type: 'value', name: '销量' },-->
-<!--  series: [{ type: 'bar', data: [], itemStyle: { borderRadius: [4, 4, 0, 0] } }]-->
-<!--})-->
-
-<!--const fetchData = async () => {-->
-<!--  const token = localStorage.getItem('token')-->
-<!--  if (!token) return-->
-<!--  try {-->
-<!--    const res = await axios.get('/api/admin/statistics/hot-products', {-->
-<!--      params: {-->
-<!--        limit: 10,-->
-<!--        startDate: startDate.value,-->
-<!--        endDate: endDate.value-->
-<!--      },-->
-<!--      headers: { Authorization: `Bearer ${token}` }-->
-<!--    })-->
-<!--    if (res.data.code === 0) {-->
-<!--      const data = res.data.data-->
-<!--      option.value.xAxis.data = data.map(item => item.productName)-->
-<!--      option.value.series[0].data = data.map(item => item.totalQuantity)-->
-<!--    } else {-->
-<!--      ElMessage.error('获取热销商品失败')-->
-<!--    }-->
-<!--  } catch (error) {-->
-<!--    console.error(error)-->
-<!--    ElMessage.error('请求失败')-->
-<!--  }-->
-<!--}-->
-
-<!--// 监听日期范围变化，重新获取数据-->
-<!--watch([startDate, endDate], () => {-->
-<!--  fetchData()-->
-<!--})-->
-
-<!--onMounted(() => {-->
-<!--  fetchData()-->
-<!--})-->
-<!--</script>-->
-
-<!--<style scoped lang="scss">-->
-<!--.chart-card {-->
-<!--  margin-bottom: 20px;-->
-<!--}-->
-<!--.chart {-->
-<!--  height: 400px;-->
-<!--  width: 100%;-->
-<!--}-->
-<!--.card-header {-->
-<!--  font-weight: bold;-->
-<!--}-->
-<!--</style>-->
 <template>
   <el-card class="chart-card">
     <template #header>
       <div class="card-header">
-        <span>热销商品 TOP 10</span>
+        <span>🔥 实时热销商品 TOP 10</span>
+        <el-button type="primary" link @click="fetchData">刷新</el-button>
       </div>
     </template>
     <div v-if="!option" v-loading="loading" style="height: 400px; display: flex; align-items: center; justify-content: center;">
@@ -119,7 +27,7 @@
 </template>
 
 <script setup>
-import { ref, inject, watch, onMounted, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, LineChart } from 'echarts/charts'
@@ -144,38 +52,35 @@ use([
   GridComponent
 ])
 
-// 安全的注入父组件提供的日期范围，如果没有提供则使用默认值
-let startDate, endDate
-try {
-  const globalRange = inject('globalDateRange', null)
-  if (globalRange) {
-    startDate = globalRange.startDate
-    endDate = globalRange.endDate
-  } else {
-    // 降级：提供响应式 ref
-    const defaultStart = ref('')
-    const defaultEnd = ref('')
-    startDate = defaultStart
-    endDate = defaultEnd
-  }
-} catch (e) {
-  console.warn('inject globalDateRange failed', e)
-  startDate = ref('')
-  endDate = ref('')
-}
-
 const loading = ref(false)
 
 // 热销图表配置
 const option = ref({
-  title: { text: '热销商品排行', left: 'center' },
-  tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+  title: { text: '🔥 实时热销商品排行', left: 'center' },
+  tooltip: {
+    trigger: 'axis',
+    axisPointer: { type: 'shadow' },
+    formatter: function(params) {
+      const p = params[0]
+      const dataIndex = p.dataIndex
+      const productId = option.value.series[0].customData[dataIndex]
+      const heatScore = option.value.series[0].data[dataIndex]
+      return `<strong>${p.name}</strong><br/>热度分数: ${heatScore}<br/>点击查看近30天趋势`
+    }
+  },
   xAxis: { type: 'category', data: [], axisLabel: { rotate: 30, interval: 0 } },
-  yAxis: { type: 'value', name: '销量' },
+  yAxis: { type: 'value', name: '热度分数' },
   series: [{
     type: 'bar',
     data: [],
-    itemStyle: { borderRadius: [4, 4, 0, 0] },
+    itemStyle: {
+      borderRadius: [4, 4, 0, 0],
+      color: function(params) {
+        // 前3名用金色/银色/铜色
+        const colors = ['#ffd700', '#c0c0c0', '#cd7f32', '#409eff']
+        return params.dataIndex < 3 ? colors[params.dataIndex] : colors[3]
+      }
+    },
     customData: []
   }]
 })
@@ -203,7 +108,7 @@ const trendOption = computed(() => ({
   }]
 }))
 
-// 获取热销数据
+// 获取实时热销数据
 const fetchData = async () => {
   loading.value = true
   const token = localStorage.getItem('token')
@@ -213,19 +118,18 @@ const fetchData = async () => {
     return
   }
   try {
-    const params = {
-      limit: 10,
-      startDate: startDate.value,
-      endDate: endDate.value
-    }
-    const res = await axios.get('/api/admin/statistics/hot-products', {
-      params,
+    // ✅ 调用实时接口，不再需要日期范围
+    const res = await axios.get('/api/admin/statistics/realtime-hot-products', {
+      params: {
+        topN: 10
+      },
       headers: { Authorization: `Bearer ${token}` }
     })
     if (res.data.code === 0) {
       const data = res.data.data
       option.value.xAxis.data = data.map(item => item.productName)
-      option.value.series[0].data = data.map(item => item.totalQuantity)
+      // ✅ 使用 heatScore（热度分数）
+      option.value.series[0].data = data.map(item => item.heatScore)
       option.value.series[0].customData = data.map(item => item.productId)
     } else {
       ElMessage.error(res.data.message || '获取热销商品失败')
@@ -282,11 +186,6 @@ const fetchProductTrend = async (productId) => {
   }
 }
 
-// 监听日期范围变化
-watch([startDate, endDate], () => {
-  fetchData()
-})
-
 onMounted(() => {
   fetchData()
 })
@@ -302,6 +201,9 @@ onMounted(() => {
   cursor: pointer;
 }
 .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   font-weight: bold;
 }
 </style>

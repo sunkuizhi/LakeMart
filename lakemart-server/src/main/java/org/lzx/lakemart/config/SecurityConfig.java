@@ -53,9 +53,11 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 公开接口（无需登录）
                         .requestMatchers("/api/user/login", "/api/user/register").permitAll()
+                        // 放行 WebSocket 端点（重要）
+                        .requestMatchers("/ws/**").permitAll()
                         // 以下是大数据埋点接口，需要登录认证
                         .requestMatchers("/api/behavior/track").authenticated()
-                        // 其他所有请求也需要认证（根据项目需要，你也可以放开部分接口）
+                        // 其他所有请求也需要认证
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())

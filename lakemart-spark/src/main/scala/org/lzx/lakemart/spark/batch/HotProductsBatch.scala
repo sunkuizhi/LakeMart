@@ -25,6 +25,7 @@ object HotProductsBatch {
       """
     SELECT product_id, COUNT(*) as cnt
     FROM lake.default.user_behaviors
+    WHERE event_time >= current_timestamp - interval 1 hour   -- 加上时间过滤！
     GROUP BY product_id
     ORDER BY cnt DESC
     LIMIT 10

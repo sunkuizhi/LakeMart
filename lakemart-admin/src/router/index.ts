@@ -36,6 +36,12 @@ const router = createRouter({
           name: 'SalesForecast',
           component: () => import('@/views/SalesForecast.vue'),
           meta: { title: '销量预测', requiresAuth: true, role: 'admin' }
+        },
+        {
+          path: '/user-profile',
+          name: 'UserProfile',
+          component: () => import('@/views/UserProfile.vue'),
+          meta: { title: '用户画像' }
         }
       ]
     }

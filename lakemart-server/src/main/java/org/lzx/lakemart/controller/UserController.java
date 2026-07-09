@@ -5,12 +5,16 @@ import jakarta.validation.Valid;
 import org.lzx.lakemart.model.dto.LoginRequest;
 import org.lzx.lakemart.model.dto.PasswordChangeRequest;
 import org.lzx.lakemart.model.dto.RegisterRequest;
+import org.lzx.lakemart.model.entity.Product;
 import org.lzx.lakemart.model.entity.User;
 import org.lzx.lakemart.model.vo.PointsLogVO;
+import org.lzx.lakemart.model.vo.ProductVO;
 import org.lzx.lakemart.model.vo.UserVO;
 import org.lzx.lakemart.result.Result;
 import org.lzx.lakemart.security.SecurityUser;
 import org.lzx.lakemart.service.PointsLogService;
+import org.lzx.lakemart.service.ProductService;
+import org.lzx.lakemart.service.RecommendService;
 import org.lzx.lakemart.service.UserService;
 import org.lzx.lakemart.util.JwtUtil;
 import org.lzx.lakemart.util.MinioUtil;
@@ -26,8 +30,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/user")
@@ -54,6 +58,12 @@ public class UserController {
 
     @Autowired
     private HttpServletRequest request;
+    @Autowired
+    private RecommendService recommendService;
+
+    @Autowired
+    private ProductService productService;
+
 
     @GetMapping("/test")
     public String test() {
@@ -162,6 +172,36 @@ public class UserController {
         userService.resetPassword(email, code, newPassword);
         return Result.success("密码重置成功");
     }
+    @GetMapping("/recommend")
+    public Result<List<ProductVO>> getRecommendations(@AuthenticationPrincipal SecurityUser securityUser,
+                                                      @RequestParam(defaultValue = "12") int limit) {
+        Long userId = securityUser.getId();
+        List<Long> productIds = recommendService.recommendForUser(userId, limit);
+        if (productIds.isEmpty()) {
+            return Result.success(Collections.emptyList());
+        }
+        // 查询商品详情（保持与现有商品列表相同的 VO 结构）
+        List<Product> products = productService.listByIds(productIds);
+        // 保持推荐顺序
+        Map<Long, Product> productMap = products.stream().collect(Collectors.toMap(Product::getId, p -> p));
+        List<ProductVO> voList = productIds.stream()
+                .map(productMap::get)
+                .filter(Objects::nonNull)
+                .map(this::convertToProductVO)
+                .collect(Collectors.toList());
+        return Result.success(voList);
+    }
 
+    // 辅助方法：Product -> ProductVO（可复用已有逻辑）
+    private ProductVO convertToProductVO(Product product) {
+        // 你项目中已有转换逻辑，可调用已有的 service 方法或直接构造
+        return ProductVO.builder()
+                .id(product.getId())
+                .name(product.getName())
+                .price(product.getPrice())
+                .imageUrl(product.getImageUrl())
+                .salesCount(product.getSalesCount())
+                .build();
+    }
 
 }

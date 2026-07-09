@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: lakemart-server
+  profiles:
+    active: dev   # ✅ 新增这一行：激活 dev 环境，让 DataSimulator 启动
   servlet:
     multipart:
       max-file-size: 10MB
@@ -24,10 +26,10 @@ spring:
   ai:
     zhipuai:
       zhipu:
-        api-key: cb7268f94330442bac35de280f048a92.aP3qOBQQjbDzjdKm   # 不设默认值，强调查询环境变量
+        api-key: cb7268f94330442bac35de280f048a92.aP3qOBQQjbDzjdKm
       chat:
         options:
-          model: glm-4-flash       # 免费模型，可根据需要切换为 glm-4.7-flash
+          model: glm-4-flash
           temperature: 0.7
   mail:
     host: smtp.qq.com
@@ -65,3 +67,13 @@ temp:
 logging:
   level:
     org.lzx.lakemart.service.AiAnalysisService: DEBUG
+    org.springframework.web.socket: DEBUG
+    org.springframework.messaging: DEBUG
+
+# Spark 批处理调度配置（使用 java -cp 方式）
+spark:
+  java17:
+    path: "D:/tool/JAVA/JDK17/bin/java.exe"
+  fat:
+    jar:
+      path: "D:/MyDemo/LakeMart/lakemart-spark/target/lakemart-spark-1.0-SNAPSHOT.jar"
