@@ -6,7 +6,7 @@ import org.lzx.lakemart.mapper.UserMapper;
 import org.lzx.lakemart.model.dto.UserPageQueryDTO;
 import org.lzx.lakemart.model.entity.User;
 import org.lzx.lakemart.model.vo.UserVO;
-import org.lzx.lakemart.service.PointsLogService;
+import org.lzx.lakemart.service.common.IPointsLogService;
 import org.lzx.lakemart.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -108,7 +108,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 .build();
     }
     @Autowired
-    private PointsLogService pointsLogService;
+    private IPointsLogService IPointsLogService;
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getEmail, email));
@@ -140,7 +140,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         user.setPoints(newPoints);
         baseMapper.updateById(user);
         // 记录积分明细
-        pointsLogService.recordPoints(userId, pointsChange, "ADMIN_ADJUST", null, remark);
+        IPointsLogService.recordPoints(userId, pointsChange, "ADMIN_ADJUST", null, remark);
     }
 
     @Override

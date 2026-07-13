@@ -12,7 +12,7 @@ import org.lzx.lakemart.model.vo.OrderItemVO;
 import org.lzx.lakemart.model.vo.OrderVO;
 import org.lzx.lakemart.model.vo.ProductSalesVO;
 import org.lzx.lakemart.service.OrderService;
-import org.lzx.lakemart.service.PointsLogService;
+import org.lzx.lakemart.service.common.IPointsLogService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,7 +37,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
     @Autowired
     private AddressMapper addressMapper;  // 注入地址Mapper
     @Autowired
-    private PointsLogService pointsLogService;
+    private IPointsLogService IPointsLogService;
 
     /**
      * 创建订单（核心业务）
@@ -124,7 +124,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         if (pointsToAdd > 0) {
             userMapper.addPoints(userId, pointsToAdd);
             // 记录积分明细
-            pointsLogService.recordPoints(userId, pointsToAdd, "ORDER_CREATE", order.getId(), "下单获得积分");
+            IPointsLogService.recordPoints(userId, pointsToAdd, "ORDER_CREATE", order.getId(), "下单获得积分");
         }
 
         // 7. 返回订单VO
@@ -240,7 +240,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements
         int pointsToDeduct = order.getTotalAmount().divide(BigDecimal.TEN).intValue();
         if (pointsToDeduct > 0) {
             userMapper.addPoints(userId, -pointsToDeduct);
-            pointsLogService.recordPoints(userId, -pointsToDeduct, "ORDER_CANCEL", order.getId(), "取消订单扣回积分");
+            IPointsLogService.recordPoints(userId, -pointsToDeduct, "ORDER_CANCEL", order.getId(), "取消订单扣回积分");
         }
         // 更新订单状态为已取消
         order.setStatus(4);

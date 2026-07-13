@@ -9,8 +9,8 @@ import org.lzx.lakemart.model.dto.ProductQueryDTO;
 import org.lzx.lakemart.model.entity.Category;
 import org.lzx.lakemart.model.entity.Product;
 import org.lzx.lakemart.model.vo.ProductVO;
-import org.lzx.lakemart.service.CategoryService;
 import org.lzx.lakemart.service.ProductService;
+import org.lzx.lakemart.service.admin.AdminCategoryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> implements ProductService {
 
     @Autowired
-    private CategoryService categoryService;
+    private AdminCategoryService adminCategoryService;
 
     @Override
     public Page<ProductVO> queryPage(ProductQueryDTO query) {
@@ -35,7 +35,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
             if (Boolean.TRUE.equals(query.getIncludeChildren())) {
                 List<Long> categoryIds = new ArrayList<>();
                 categoryIds.add(query.getCategoryId());
-                List<Long> subIds = categoryService.getAllSubCategoryIds(query.getCategoryId());
+                List<Long> subIds = adminCategoryService.getAllSubCategoryIds(query.getCategoryId());
                 if (subIds != null && !subIds.isEmpty()) {
                     categoryIds.addAll(subIds);
                 }
@@ -44,7 +44,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
                 wrapper.eq(Product::getCategoryId, query.getCategoryId());
             }
         } else if (query.getParentCategoryId() != null) {
-            List<Long> categoryIds = categoryService.getAllSubCategoryIds(query.getParentCategoryId());
+            List<Long> categoryIds = adminCategoryService.getAllSubCategoryIds(query.getParentCategoryId());
             if (!categoryIds.isEmpty()) {
                 wrapper.in(Product::getCategoryId, categoryIds);
             } else {
@@ -80,7 +80,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
         Page<Product> productPage = baseMapper.selectPage(page, wrapper);
         Page<ProductVO> voPage = new Page<>(productPage.getCurrent(), productPage.getSize(), productPage.getTotal());
         List<ProductVO> voList = productPage.getRecords().stream().map(product -> {
-            Category category = categoryService.getById(product.getCategoryId());
+            Category category = adminCategoryService.getById(product.getCategoryId());
             return ProductVO.builder()
                     .id(product.getId())
                     .name(product.getName())
@@ -113,7 +113,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
             if (Boolean.TRUE.equals(query.getIncludeChildren())) {
                 List<Long> categoryIds = new ArrayList<>();
                 categoryIds.add(query.getCategoryId());
-                List<Long> subIds = categoryService.getAllSubCategoryIds(query.getCategoryId());
+                List<Long> subIds = adminCategoryService.getAllSubCategoryIds(query.getCategoryId());
                 if (subIds != null && !subIds.isEmpty()) {
                     categoryIds.addAll(subIds);
                 }
@@ -132,7 +132,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper, Product> impl
         Page<Product> productPage = baseMapper.selectPage(page, wrapper);
         Page<ProductVO> voPage = new Page<>(productPage.getCurrent(), productPage.getSize(), productPage.getTotal());
         List<ProductVO> voList = productPage.getRecords().stream().map(product -> {
-            Category category = categoryService.getById(product.getCategoryId());
+            Category category = adminCategoryService.getById(product.getCategoryId());
             return ProductVO.builder()
                     .id(product.getId())
                     .name(product.getName())

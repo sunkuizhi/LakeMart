@@ -76,7 +76,7 @@
       </el-card>
     </div>
 
-    <!-- 分页（紧跟在热门商品之后） -->
+    <!-- 分页 -->
     <el-pagination
       v-model:current-page="pageNum"
       v-model:page-size="pageSize"
@@ -94,27 +94,29 @@
       <div class="product-grid">
         <el-card
           v-for="product in recommendProducts"
-          :key="product.id"
+          :key="product.productId"
           class="product-card"
           shadow="hover"
-          body-style="{ padding: '12px' }"
-          @click="goToDetail(product.id)"
+          @click="goToDetail(product.productId)"
         >
-          <img :src="product.imageUrl || `https://picsum.photos/200/200?random=${product.id}`" class="product-image" />
+          <img :src="product.imageUrl || `https://picsum.photos/200/200?random=${product.productId}`" class="product-image" />
           <div class="product-info">
-            <div class="product-name">{{ product.name }}</div>
+            <div class="product-name">{{ product.productName }}</div>
             <div class="product-price">¥{{ product.price.toFixed(2) }}</div>
+            <div class="recommend-reason">{{ product.reason }}</div>
             <div class="product-actions">
-              <el-button type="primary" size="small" plain @click.stop="addToCart(product.id)">加入购物车</el-button>
+              <el-button type="primary" size="small" plain @click.stop="addToCart(product.productId)">加入购物车</el-button>
             </div>
           </div>
         </el-card>
       </div>
     </div>
+
+
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -134,22 +136,21 @@ import { getBannerList } from '@/api/banner'
 import axios from 'axios'
 
 const router = useRouter()
-const productList = ref<any[]>([])
+const productList = ref([])
 const pageNum = ref(1)
 const pageSize = ref(12)
 const total = ref(0)
 const searchKeyword = ref('')
-const selectedCategoryId = ref<number | null>(null)
+const selectedCategoryId = ref(null)
 const sortType = ref('')
-const categoryTree = ref<any[]>([])
-const banners = ref<any[]>([])
-const categories = ref<any[]>([])
-const recommendProducts = ref<any[]>([])
+const categoryTree = ref([])
+const banners = ref([])
+const categories = ref([])
+const recommendProducts = ref([])
 
-// 模拟数据开关：true = 强制显示假数据（立即看到效果），false = 使用后端真实接口
-const USE_MOCK_RECOMMEND = true
+// 是否使用模拟数据（false = 调用真实接口）
+const USE_MOCK_RECOMMEND = false
 
-// 级联选择器配置
 const cascaderProps = {
   value: 'id',
   label: 'name',
@@ -159,9 +160,8 @@ const cascaderProps = {
   emitPath: false
 }
 
-// 根据分类名称返回对应的图标组件对象
-const getCategoryIcon = (categoryName: string) => {
-  const iconMap: Record<string, any> = {
+const getCategoryIcon = (categoryName) => {
+  const iconMap = {
     '手机通讯': Iphone,
     '电脑办公': Monitor,
     '数码影音': Camera,
@@ -175,7 +175,6 @@ const getCategoryIcon = (categoryName: string) => {
   return icon && typeof icon === 'object' ? icon : GoodsFilled
 }
 
-// 获取轮播图
 const fetchBanners = async () => {
   try {
     const res = await getBannerList()
@@ -187,7 +186,6 @@ const fetchBanners = async () => {
   }
 }
 
-// 获取分类树（用户端只返回启用状态的分类）
 const fetchCategoryTree = async () => {
   try {
     const res = await getCategoryTree()
@@ -200,10 +198,9 @@ const fetchCategoryTree = async () => {
   }
 }
 
-// 获取热门商品列表（包含子分类）
 const fetchData = async () => {
   try {
-    const params: any = {
+    const params = {
       pageNum: pageNum.value,
       pageSize: pageSize.value,
       keyword: searchKeyword.value || undefined,
@@ -228,9 +225,9 @@ const fetchData = async () => {
   }
 }
 
-// 获取个性化推荐（猜你喜欢）
+// ✅ 唯一的 fetchRecommend 函数
 const fetchRecommend = async () => {
-  // 模拟数据模式：直接显示测试商品（确保区块出现）
+  // 如果使用模拟数据，直接显示测试商品
   if (USE_MOCK_RECOMMEND) {
     recommendProducts.value = [
       { id: 1, name: 'Apple iPhone 15 Pro Max', price: 9999.00, imageUrl: 'https://picsum.photos/id/1/200/200' },
@@ -242,24 +239,58 @@ const fetchRecommend = async () => {
     return
   }
 
-  // 真实接口模式（原有逻辑）
+  // 真实接口模式
   const token = localStorage.getItem('token')
+  // 未登录：显示热销商品
   if (!token) {
-    console.warn('未登录，不显示推荐')
+    try {
+      const res = await getProductList({
+        pageNum: 1,
+        pageSize: 12,
+        sortBy: 'salesCount',
+        sortOrder: 'desc'
+      })
+      if (res.data.code === 0) {
+        recommendProducts.value = res.data.data.records
+      }
+    } catch (error) {
+      console.error('获取热销商品失败', error)
+    }
     return
   }
+
+  // 已登录：调用推荐接口
   try {
-    const res = await axios.get('/api/user/recommend', {
-      params: { limit: 12 },
+    const res = await axios.get('/api/user/recommend?limit=12', {
       headers: { Authorization: `Bearer ${token}` }
     })
     if (res.data.code === 0) {
       recommendProducts.value = res.data.data
     } else {
       console.error('推荐接口返回错误', res.data.message)
+      // 降级：热销商品
+      const fallbackRes = await getProductList({
+        pageNum: 1,
+        pageSize: 12,
+        sortBy: 'salesCount',
+        sortOrder: 'desc'
+      })
+      if (fallbackRes.data.code === 0) {
+        recommendProducts.value = fallbackRes.data.data.records
+      }
     }
   } catch (error) {
     console.error('获取推荐失败', error)
+    // 降级：热销商品
+    const fallbackRes = await getProductList({
+      pageNum: 1,
+      pageSize: 12,
+      sortBy: 'salesCount',
+      sortOrder: 'desc'
+    })
+    if (fallbackRes.data.code === 0) {
+      recommendProducts.value = fallbackRes.data.data.records
+    }
   }
 }
 
@@ -268,22 +299,31 @@ const handleSearch = () => {
   fetchData()
 }
 
-const handleCategoryChange = (value: number | null) => {
+const handleCategoryChange = (value) => {
   selectedCategoryId.value = value
   handleSearch()
 }
 
-const goToCategory = (id: number) => {
+const goToCategory = (id) => {
   selectedCategoryId.value = id
   handleSearch()
   document.querySelector('.product-header')?.scrollIntoView({ behavior: 'smooth' })
 }
 
-const goToDetail = (id: number) => {
-  router.push(`/product/${id}`)
+const goToDetail = (productId) => {
+  if (!productId || isNaN(Number(productId))) {
+    ElMessage.warning('商品信息有误')
+    return
+  }
+  router.push(`/product/${productId}`)
 }
 
-const addToCart = async (productId: number) => {
+const addToCart = async (productId) => {
+  console.log('addToCart received productId:', productId, typeof productId)
+  if (!productId || isNaN(Number(productId))) {
+    ElMessage.warning('商品信息有误')
+    return
+  }
   const token = localStorage.getItem('token')
   if (!token) {
     ElMessage.warning('请先登录')
@@ -312,6 +352,7 @@ onMounted(() => {
   fetchRecommend()
 })
 </script>
+
 
 <style scoped lang="scss">
 .home-container {
@@ -436,7 +477,15 @@ onMounted(() => {
     }
   }
 }
-
+.recommend-reason {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  padding: 2px 8px;
+  background: #f0f2f5;
+  border-radius: 10px;
+  display: inline-block;
+}
 // 分页
 .pagination {
   margin-top: 20px;

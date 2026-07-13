@@ -4,8 +4,8 @@ server:
 spring:
   application:
     name: lakemart-server
-  profiles:
-    active: dev   # ✅ 新增这一行：激活 dev 环境，让 DataSimulator 启动
+#  profiles:
+#    active: dev   # ✅ 新增这一行：激活 dev 环境，让 DataSimulator 启动
   servlet:
     multipart:
       max-file-size: 10MB
@@ -66,10 +66,19 @@ temp:
 
 logging:
   level:
-    org.lzx.lakemart.service.AiAnalysisService: DEBUG
-    org.springframework.web.socket: DEBUG
-    org.springframework.messaging: DEBUG
+    # 你自己的服务日志（保持 DEBUG，方便调试）
+    org.lzx.lakemart: DEBUG
 
+    # 这些太吵了，调成 WARN 或 ERROR
+    org.springframework: WARN
+    org.springframework.web.socket: WARN
+    org.springframework.messaging: WARN
+    org.lzx.lakemart.task.SparkBatchScheduler: WARN
+    org.springframework.kafka: WARN
+    org.apache.kafka: WARN
+    org.mybatis: WARN
+    com.zaxxer.hikari: WARN
+    root: WARN
 # Spark 批处理调度配置（使用 java -cp 方式）
 spark:
   java17:
