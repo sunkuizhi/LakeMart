@@ -24,7 +24,7 @@ import org.lzx.lakemart.service.common.IPointsLogService;
 import org.lzx.lakemart.util.JwtUtil;
 import org.lzx.lakemart.util.MinioUtil;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -34,7 +34,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.data.redis.core.StringRedisTemplate;
+
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -154,7 +154,7 @@ public class UserController {
     @PostMapping("/avatar")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     public Result<String> uploadAvatar(@AuthenticationPrincipal SecurityUser securityUser,
-                                       @RequestParam("file") MultipartFile file) {
+                                       @RequestParam(name = "file") MultipartFile file) {
         Long userId = securityUser.getId();
         String avatarUrl = minioUtil.uploadFile(file, "avatar");
         userService.updateAvatar(userId, avatarUrl);
@@ -162,31 +162,33 @@ public class UserController {
     }
 
     @PostMapping("/send-code")
-    public Result<String> sendVerificationCode(@RequestParam String email,
-                                               @RequestParam String type) {
+    public Result<String> sendVerificationCode(@RequestParam(name = "email") String email,
+                                               @RequestParam(name = "type") String type) {
         userService.sendVerificationCode(email, type);
         return Result.success("验证码已发送");
     }
 
     @PutMapping("/email")
     public Result<String> changeEmail(@AuthenticationPrincipal SecurityUser securityUser,
-                                      @RequestParam String newEmail,
-                                      @RequestParam String code) {
+                                      @RequestParam(name = "newEmail") String newEmail,
+                                      @RequestParam(name = "code") String code) {
         Long userId = securityUser.getId();
         userService.changeEmail(userId, newEmail, code);
         return Result.success("邮箱修改成功");
     }
 
     @PostMapping("/reset-password")
-    public Result<String> resetPassword(@RequestParam String email,
-                                        @RequestParam String code,
-                                        @RequestParam String newPassword) {
+    public Result<String> resetPassword(@RequestParam(name = "email") String email,
+                                        @RequestParam(name = "code") String code,
+                                        @RequestParam(name = "newPassword") String newPassword) {
         userService.resetPassword(email, code, newPassword);
         return Result.success("密码重置成功");
     }
+
     @GetMapping("/recommend")
-    public Result<List<RecommendProductVO>> getRecommendations(@AuthenticationPrincipal SecurityUser securityUser,
-                                                               @RequestParam(defaultValue = "12") int limit) {
+    public Result<List<RecommendProductVO>> getRecommendations(
+            @AuthenticationPrincipal SecurityUser securityUser,
+            @RequestParam(name = "limit", defaultValue = "12") int limit) {
         System.out.println("======= 推荐接口被调用了！ =======");
         try {
             Long userId = securityUser.getId();

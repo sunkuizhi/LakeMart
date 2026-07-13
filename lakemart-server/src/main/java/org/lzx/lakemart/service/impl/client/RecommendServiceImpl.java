@@ -1,6 +1,5 @@
 package org.lzx.lakemart.service.impl.client;
 
-
 import org.lzx.lakemart.model.vo.RecommendProductVO;
 import org.lzx.lakemart.service.client.IRecommendService;
 import org.slf4j.Logger;
@@ -174,11 +173,15 @@ public class RecommendServiceImpl implements IRecommendService {
         return jdbcTemplate.queryForList(sql, Long.class, params.toArray());
     }
 
+    /**
+     * 获取用户最近30天内浏览过的商品ID（去重，按最后浏览时间倒序）
+     */
     private List<Long> getUserRecentProducts(Long userId) {
-        String sql = "SELECT DISTINCT product_id FROM user_behavior_log " +
+        // ✅ 修复：使用 GROUP BY + MAX(create_time) 替代 DISTINCT + ORDER BY create_time
+        String sql = "SELECT product_id FROM user_behavior_log " +
                 "WHERE user_id = ? AND product_id IS NOT NULL " +
                 "AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY) " +
-                "ORDER BY create_time DESC LIMIT 10";
+                "GROUP BY product_id ORDER BY MAX(create_time) DESC LIMIT 10";
         return jdbcTemplate.queryForList(sql, Long.class, userId);
     }
 
