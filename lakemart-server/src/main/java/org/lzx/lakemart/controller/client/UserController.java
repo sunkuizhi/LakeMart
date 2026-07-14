@@ -1,8 +1,6 @@
 package org.lzx.lakemart.controller.client;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
@@ -20,11 +18,11 @@ import org.lzx.lakemart.security.SecurityUser;
 import org.lzx.lakemart.service.ProductService;
 import org.lzx.lakemart.service.UserService;
 import org.lzx.lakemart.service.client.IRecommendService;
+import org.lzx.lakemart.service.common.ABTestManager;
 import org.lzx.lakemart.service.common.IPointsLogService;
 import org.lzx.lakemart.util.JwtUtil;
 import org.lzx.lakemart.util.MinioUtil;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -36,7 +34,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -63,12 +60,6 @@ public class UserController {
     private MinioUtil minioUtil;
 
     @Autowired
-    private StringRedisTemplate redisTemplate;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @Autowired
     private HttpServletRequest request;
 
     @Autowired
@@ -76,7 +67,8 @@ public class UserController {
 
     @Autowired
     private ProductService productService;
-
+    @Autowired
+    private ABTestManager abTestManager;
     @GetMapping("/test")
     public String test() {
         return "Hello, LakeMart!";
@@ -101,6 +93,8 @@ public class UserController {
         return Result.success(vo);
     }
 
+;
+
     @PostMapping("/login")
     public Result<Map<String, String>> login(@Valid @RequestBody LoginRequest request) {
         Authentication authentication = authenticationManager.authenticate(
@@ -116,6 +110,8 @@ public class UserController {
         Map<String, String> data = new HashMap<>();
         data.put("token", token);
         data.put("role", user.getRole());
+        // 返回 experimentId，供前端存储并用于埋点
+        data.put("experimentId", abTestManager.getExperimentId(user.getId()));
         return Result.success(data);
     }
 
@@ -185,61 +181,26 @@ public class UserController {
         return Result.success("密码重置成功");
     }
 
+    /**
+     * 获取推荐商品列表
+     * 逻辑由 IRecommendService 统一处理（优先 Redis 缓存，降级策略）
+     */
     @GetMapping("/recommend")
     public Result<List<RecommendProductVO>> getRecommendations(
             @AuthenticationPrincipal SecurityUser securityUser,
             @RequestParam(name = "limit", defaultValue = "12") int limit) {
-        System.out.println("======= 推荐接口被调用了！ =======");
+        log.info("=== 推荐接口被调用，用户ID: {}, limit: {} ===", securityUser.getId(), limit);
         try {
             Long userId = securityUser.getId();
-            log.info("=== 推荐接口被调用 ===");
-            log.info("用户ID: {}, limit: {}", userId, limit);
-
-            String cacheKey = "recommend:" + userId;
-            List<RecommendProductVO> recommendations = null;
-
-            try {
-                log.info("尝试从 Redis 读取缓存: {}", cacheKey);
-                String cachedJson = (String) redisTemplate.opsForValue().get(cacheKey);
-                if (cachedJson != null && !cachedJson.isEmpty()) {
-                    recommendations = objectMapper.readValue(cachedJson, new TypeReference<List<RecommendProductVO>>() {});
-                    log.info("缓存命中，推荐商品数: {}", recommendations != null ? recommendations.size() : 0);
-                } else {
-                    log.info("缓存未命中");
-                }
-            } catch (Exception e) {
-                log.warn("读取推荐缓存失败，重新计算", e);
+            // 直接委托给 Service，Service 内部会优先读取 Redis 缓存，若无则执行降级策略
+            List<RecommendProductVO> recommendations = IRecommendService.recommendForUser(userId, limit);
+            if (recommendations == null) {
+                recommendations = new ArrayList<>();
             }
-
-            if (recommendations == null || recommendations.isEmpty()) {
-                log.info("开始调用 IRecommendService.recommendForUser");
-                recommendations = IRecommendService.recommendForUser(userId, limit);
-                log.info("推荐计算完成，商品数: {}", recommendations != null ? recommendations.size() : 0);
-
-                if (recommendations == null) {
-                    log.warn("recommendations 为 null，转换为空列表");
-                    recommendations = new ArrayList<>();
-                }
-
-                // 缓存 1 小时
-                try {
-                    String json = objectMapper.writeValueAsString(recommendations);
-                    redisTemplate.opsForValue().set(cacheKey, json, 1, TimeUnit.HOURS);
-                    log.info("推荐结果已缓存");
-                } catch (Exception e) {
-                    log.warn("写入推荐缓存失败", e);
-                }
-            }
-
-            if (recommendations.size() > limit) {
-                recommendations = recommendations.subList(0, limit);
-            }
-
-            log.info("=== 推荐接口返回成功，商品数: {} ===", recommendations.size());
+            log.info("推荐接口返回成功，商品数: {}", recommendations.size());
             return Result.success(recommendations);
-
         } catch (Exception e) {
-            log.error("=== 推荐接口异常 ===", e);
+            log.error("推荐接口异常", e);
             return Result.error("获取推荐失败：" + e.getMessage());
         }
     }

@@ -45,6 +45,12 @@
                 </exclusion>
             </exclusions>
         </dependency>
+        <!-- Spark MLlib (机器学习库，包含 ALS、评估器、调优工具) -->
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-mllib_${scala.binary.version}</artifactId>
+            <version>${spark.version}</version>
+        </dependency>
 
         <!-- Spark Streaming Kafka，排除旧的 Hadoop 依赖 -->
         <dependency>

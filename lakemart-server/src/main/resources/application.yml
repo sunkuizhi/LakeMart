@@ -86,3 +86,7 @@ spark:
   fat:
     jar:
       path: "D:/MyDemo/LakeMart/lakemart-spark/target/lakemart-spark-1.0-SNAPSHOT.jar"
+
+abtest:
+  experiment:
+    ratio: 0.1   # 10% 用户进入 ALS 实验组

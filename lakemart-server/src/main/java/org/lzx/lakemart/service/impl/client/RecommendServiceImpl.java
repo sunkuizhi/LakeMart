@@ -1,13 +1,20 @@
 package org.lzx.lakemart.service.impl.client;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.lzx.lakemart.model.vo.RecommendProductVO;
+import org.lzx.lakemart.service.ProductService;
 import org.lzx.lakemart.service.client.IRecommendService;
+import org.lzx.lakemart.service.common.ABTestManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -19,12 +26,70 @@ public class RecommendServiceImpl implements IRecommendService {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    private static final int DEFAULT_LIMIT = 12;
+    @Autowired
+    private ProductService productService;
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
+    @Autowired
+    private ABTestManager abTestManager;   // 注入独立组件
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public List<RecommendProductVO> recommendForUser(Long userId, int limit) {
         log.info("开始为用户 {} 推荐商品，limit={}", userId, limit);
 
+        boolean useALS = abTestManager.isInExperimentGroup(userId);
+
+        if (useALS) {
+            List<RecommendProductVO> alsResult = getRecommendFromRedis(userId, limit);
+            if (alsResult != null && !alsResult.isEmpty()) {
+                log.info("用户 {} 命中 ALS 推荐缓存", userId);
+                return alsResult;
+            } else {
+                log.info("用户 {} 实验组但未命中缓存，降级到普通推荐", userId);
+            }
+        } else {
+            log.info("用户 {} 在对照组，使用普通推荐", userId);
+        }
+
+        return fallbackRecommend(userId, limit);
+    }
+
+    /**
+     * 从 Redis 获取推荐列表，如果无数据或数据不足则返回 null
+     */
+    private List<RecommendProductVO> getRecommendFromRedis(Long userId, int limit) {
+        String redisKey = "recommend:user:" + userId;
+        String json = redisTemplate.opsForValue().get(redisKey);
+        if (json == null || json.isEmpty()) {
+            return null;
+        }
+
+        try {
+            // 解析 JSON 数组（商品 ID 列表）
+            List<Long> productIds = objectMapper.readValue(json, new TypeReference<List<Long>>() {});
+            if (productIds == null || productIds.isEmpty()) {
+                return null;
+            }
+
+            // 取前 limit 个（如果 Redis 存储超过 limit）
+            List<Long> topIds = productIds.stream().limit(limit).collect(Collectors.toList());
+
+            // 填充商品详情（复用已有方法，并指定推荐理由）
+            return fillProductDetailsWithReason(topIds, "为你精选");
+        } catch (Exception e) {
+            log.warn("解析 Redis 推荐数据失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 降级推荐：采用原策略（品类偏好 → 相似商品 → 热销兜底）
+     */
+    private List<RecommendProductVO> fallbackRecommend(Long userId, int limit) {
         List<RecommendProductVO> results = new ArrayList<>();
 
         // 1. 基于偏好品类推荐
@@ -72,7 +137,43 @@ public class RecommendServiceImpl implements IRecommendService {
     }
 
     /**
-     * 填充商品详细信息（名称、价格、图片、销量）
+     * 根据商品 ID 列表填充详情（统一推荐理由）
+     */
+    private List<RecommendProductVO> fillProductDetailsWithReason(List<Long> productIds, String reason) {
+        if (productIds == null || productIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 批量查询商品详情
+        String inSql = String.join(",", Collections.nCopies(productIds.size(), "?"));
+        String sql = "SELECT id, name, price, image_url, sales_count FROM tb_product WHERE id IN (" + inSql + ")";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, productIds.toArray());
+
+        Map<Long, Map<String, Object>> productMap = rows.stream()
+                .collect(Collectors.toMap(
+                        row -> ((Number) row.get("id")).longValue(),
+                        row -> row
+                ));
+
+        List<RecommendProductVO> filled = new ArrayList<>();
+        for (Long productId : productIds) {
+            Map<String, Object> product = productMap.get(productId);
+            if (product != null) {
+                filled.add(RecommendProductVO.builder()
+                        .productId(productId)
+                        .productName((String) product.get("name"))
+                        .price((BigDecimal) product.get("price"))
+                        .imageUrl((String) product.get("image_url"))
+                        .salesCount(((Number) product.get("sales_count")).intValue())
+                        .reason(reason)
+                        .build());
+            }
+        }
+        return filled;
+    }
+
+    /**
+     * 填充商品详细信息（名称、价格、图片、销量）——用于降级方案
      */
     private List<RecommendProductVO> fillProductDetails(List<RecommendProductVO> results, int limit) {
         if (results.isEmpty()) return Collections.emptyList();
@@ -98,7 +199,7 @@ public class RecommendServiceImpl implements IRecommendService {
                 filled.add(RecommendProductVO.builder()
                         .productId(item.getProductId())
                         .productName((String) product.get("name"))
-                        .price((java.math.BigDecimal) product.get("price"))
+                        .price((BigDecimal) product.get("price"))
                         .imageUrl((String) product.get("image_url"))
                         .salesCount(((Number) product.get("sales_count")).intValue())
                         .reason(item.getReason())
@@ -109,7 +210,6 @@ public class RecommendServiceImpl implements IRecommendService {
         if (filled.size() < limit) {
             List<Long> hot = getHotProducts(limit - filled.size());
             for (Long productId : hot) {
-                // 避免重复
                 boolean exists = filled.stream().anyMatch(p -> p.getProductId().equals(productId));
                 if (!exists) {
                     filled.add(RecommendProductVO.builder()
@@ -125,7 +225,7 @@ public class RecommendServiceImpl implements IRecommendService {
         return filled.stream().limit(limit).collect(Collectors.toList());
     }
 
-    // ========== 辅助方法 ==========
+    // ========== 以下辅助方法保持不变 ==========
 
     private List<Long> getUserPreferCategories(Long userId) {
         String sql = "SELECT prefer_category_1, prefer_category_2, prefer_category_3 FROM user_profile WHERE user_id = ?";
@@ -177,7 +277,6 @@ public class RecommendServiceImpl implements IRecommendService {
      * 获取用户最近30天内浏览过的商品ID（去重，按最后浏览时间倒序）
      */
     private List<Long> getUserRecentProducts(Long userId) {
-        // ✅ 修复：使用 GROUP BY + MAX(create_time) 替代 DISTINCT + ORDER BY create_time
         String sql = "SELECT product_id FROM user_behavior_log " +
                 "WHERE user_id = ? AND product_id IS NOT NULL " +
                 "AND create_time >= DATE_SUB(NOW(), INTERVAL 30 DAY) " +
@@ -205,4 +304,23 @@ public class RecommendServiceImpl implements IRecommendService {
             return jdbcTemplate.queryForList(fallbackSql, Long.class, limit);
         }
     }
+
+    @Component
+    public class ABTestManager {
+        private static final Logger log = LoggerFactory.getLogger(ABTestManager.class);
+
+        // 实验组流量比例，例如 0.1 表示 10% 的用户进入实验组（ALS推荐）
+        private double experimentTrafficRatio = 0.1;
+
+        public boolean isInExperimentGroup(Long userId) {
+            if (userId == null) return false;
+            // 使用 userId 的 hash 绝对值，确保同一用户稳定分流
+            int bucket = Math.abs(userId.hashCode()) % 100;
+            boolean inExperiment = bucket < (experimentTrafficRatio * 100);
+            log.debug("用户 {} 分流: {}", userId, inExperiment ? "实验组(ALS)" : "对照组(降级)");
+            return inExperiment;
+        }
+    }
+
+
 }

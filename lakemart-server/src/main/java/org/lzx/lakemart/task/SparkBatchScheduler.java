@@ -102,4 +102,34 @@ public class SparkBatchScheduler {
             log.error("执行 Spark 批处理作业 [{}] 异常: {}", mainClass, e.getMessage(), e);
         }
     }
+
+    @Scheduled(cron = "0 0 2 * * ?") // 每天凌晨2点执行
+    public void runUserRecommendBatch() {
+        log.info("开始执行用户推荐列表生成作业...");
+        try {
+            // 调用 Spark 作业的 main 方法
+            String sparkHome = System.getenv("SPARK_HOME");
+            String jarPath = "lakemart-spark/target/lakemart-spark.jar"; // 根据实际路径调整
+            String className = "org.lzx.lakemart.spark.batch.UserRecommendBatch";
+            // 使用 ProcessBuilder 或直接 Java 调用（建议用 ProcessBuilder 独立进程）
+            ProcessBuilder pb = new ProcessBuilder(
+                    "spark-submit",
+                    "--class", className,
+                    "--master", "local[*]",
+                    jarPath
+            );
+            pb.inheritIO();
+            Process p = pb.start();
+            int exitCode = p.waitFor();
+            if (exitCode == 0) {
+                log.info("用户推荐列表生成作业执行成功。");
+            } else {
+                log.error("用户推荐列表生成作业执行失败，退出码: {}", exitCode);
+            }
+        } catch (Exception e) {
+            log.error("执行用户推荐列表生成作业异常", e);
+        }
+    }
+
+
 }
