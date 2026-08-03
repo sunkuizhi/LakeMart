@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lakemart-agent"
+version = "0.1.0"
+description = "lakemart-agent"
+readme = "README.md"
+authors = [{ name = "lzx", email = "kuiiii0916@163.com" }]
+license = { text = "Apache-2.0" }
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn",                      # 不启用标准特性
+    "langchain-core",
+    "langchain",
+    "langgraph",
+    "langchain-openai",
+    "langchain-community",
+    "langgraph-checkpoint-redis",
+    "redis",
+    "httpx",
+    "pydantic-settings",
+    "loguru",
+    "python-dotenv",
+    "certifi",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "langsmith",
+]

@@ -11,13 +11,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * 推荐服务实现（优先从 Redis 读取离线预计算推荐列表）
+ * 依赖独立的 ABTestManager 组件进行分流控制
+ */
 @Service
 public class RecommendServiceImpl implements IRecommendService {
 
@@ -27,13 +30,13 @@ public class RecommendServiceImpl implements IRecommendService {
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
-    private ProductService productService;
+    private ProductService productService; // 保留以备后用
 
     @Autowired
     private StringRedisTemplate redisTemplate;
 
     @Autowired
-    private ABTestManager abTestManager;   // 注入独立组件
+    private ABTestManager abTestManager;   // 注入独立组件（不再依赖内部类）
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -41,9 +44,11 @@ public class RecommendServiceImpl implements IRecommendService {
     public List<RecommendProductVO> recommendForUser(Long userId, int limit) {
         log.info("开始为用户 {} 推荐商品，limit={}", userId, limit);
 
+        // 分流决策：由 ABTestManager 判断是否进入实验组
         boolean useALS = abTestManager.isInExperimentGroup(userId);
 
         if (useALS) {
+            // 实验组：优先从 Redis 读取 ALS 推荐
             List<RecommendProductVO> alsResult = getRecommendFromRedis(userId, limit);
             if (alsResult != null && !alsResult.isEmpty()) {
                 log.info("用户 {} 命中 ALS 推荐缓存", userId);
@@ -55,6 +60,7 @@ public class RecommendServiceImpl implements IRecommendService {
             log.info("用户 {} 在对照组，使用普通推荐", userId);
         }
 
+        // 对照组 或 实验组缓存未命中，走降级策略
         return fallbackRecommend(userId, limit);
     }
 
@@ -304,23 +310,4 @@ public class RecommendServiceImpl implements IRecommendService {
             return jdbcTemplate.queryForList(fallbackSql, Long.class, limit);
         }
     }
-
-    @Component
-    public class ABTestManager {
-        private static final Logger log = LoggerFactory.getLogger(ABTestManager.class);
-
-        // 实验组流量比例，例如 0.1 表示 10% 的用户进入实验组（ALS推荐）
-        private double experimentTrafficRatio = 0.1;
-
-        public boolean isInExperimentGroup(Long userId) {
-            if (userId == null) return false;
-            // 使用 userId 的 hash 绝对值，确保同一用户稳定分流
-            int bucket = Math.abs(userId.hashCode()) % 100;
-            boolean inExperiment = bucket < (experimentTrafficRatio * 100);
-            log.debug("用户 {} 分流: {}", userId, inExperiment ? "实验组(ALS)" : "对照组(降级)");
-            return inExperiment;
-        }
-    }
-
-
 }

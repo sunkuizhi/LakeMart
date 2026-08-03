@@ -26,6 +26,7 @@
     <modules>
         <module>lakemart-server</module>
         <module>lakemart-spark</module>
+        <!-- <module>lakemart-agent</module> -->
     </modules>
 
     <dependencyManagement>

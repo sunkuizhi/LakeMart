@@ -10,4 +10,5 @@ public interface BehaviorLogService {
 
     // 新增：获取最近的行为记录（用于管理端轮询）
     List<BehaviorMonitorDto> getRecentBehaviors(int limit);
+
 }

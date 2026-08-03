@@ -34,6 +34,8 @@
       </el-main>
       <el-footer class="footer">© 2026 LakeMart 版权所有</el-footer>
     </el-container>
+    <!-- 全局悬浮聊天按钮 -->
+    <ChatWidget />
   </div>
 </template>
 
@@ -41,6 +43,7 @@
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import ChatWidget from '@/components/ChatWidget.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
